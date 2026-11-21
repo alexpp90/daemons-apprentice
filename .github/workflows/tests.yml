@@ -47,12 +47,15 @@ jobs:
           - name: macOS Apple silicon - Bash 3.2, every level, every scenario
             os: macos-latest
             run: /bin/bash tests/run_all.sh standard
-          - name: macOS Apple silicon - whole game, no developer tools
+          # The Mac's whole game in one home (about 8 minutes, one game after
+          # the other) runs weekly in compat.yml; here every level is played
+          # from a fresh home, in parallel, which covers the same tasks.
+          - name: macOS Apple silicon - no developer tools, every level
             os: macos-latest
-            run: TQ_NOCLT=1 /bin/bash tests/autoplay.sh full
-          - name: macOS Intel - the whole game
+            run: TQ_NOCLT=1 /bin/bash tests/autoplay.sh @standard
+          - name: macOS Intel - every level, every scenario
             os: macos-15-intel
-            run: /bin/bash tests/autoplay.sh full
+            run: /bin/bash tests/autoplay.sh @standard
     steps:
       - uses: actions/checkout@v5
       - name: Play

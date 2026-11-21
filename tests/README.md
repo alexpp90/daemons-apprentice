@@ -84,9 +84,9 @@ computers, and at which of those differences have caused bugs or could.
 | Variant | Why it matters | Where it runs |
 |---|---|---|
 | Linux, Bash 5, GNU tools (Ubuntu x86_64) | most Linux players | every push: standard, `full`, Python driver |
-| macOS on Apple silicon, the system's `/bin/bash` 3.2, BSD tools, stock `PATH` | most Mac players; Bash 3.2 lacks many newer features | every push: static + standard |
-| A Mac without Apple's developer tools | `python3`, `git` and friends are only install stubs there and open a dialog | every push: `full` with stand-in stubs that fail the test if anything calls them (`TQ_NOCLT=1`) |
-| A real Intel Mac | older Macs, different binaries | every push: `full` on `macos-15-intel` |
+| macOS on Apple silicon, the system's `/bin/bash` 3.2, BSD tools, stock `PATH` | most Mac players; Bash 3.2 lacks many newer features | every push: static + standard; weekly also the whole game in one home |
+| A Mac without Apple's developer tools | `python3`, `git` and friends are only install stubs there and open a dialog | every push: every level and scenario with stand-in stubs that fail the test if anything calls them (`TQ_NOCLT=1`); weekly also `full` |
+| A real Intel Mac | older Macs, different binaries | every push: every level and scenario on `macos-15-intel` |
 | Intel code on Apple silicon (Rosetta 2) | the closest thing to an Intel Mac on a new one | weekly (`@quick`, if the runner has Rosetta) and `full` locally |
 | macOS 14, 15 and 26 | each macOS version updates the BSD tools and LibreSSL a little | weekly (`compat.yml`) and by hand before a release |
 | Ubuntu 22.04 and 24.04, and Linux on ARM (arm64) | older coreutils and util-linux; ARM laptops | weekly |
@@ -125,7 +125,10 @@ computers, and at which of those differences have caused bugs or could.
   with the rest.
 - **CI is a matrix.** The variants above are separate jobs that run at
   the same time, so a push is checked in about the time of its slowest
-  job, a few minutes, instead of the sum of all of them.
+  job, a few minutes, instead of the sum of all of them. On a Mac the
+  one-home playthrough takes about 8 minutes, because its games run one
+  after the other. It runs weekly; every push plays the same levels in
+  parallel instead.
 
 ## Pitfalls
 

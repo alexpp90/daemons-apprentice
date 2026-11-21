@@ -27,6 +27,9 @@ jobs:
         run: |
           if [ "$(uname -s)" = Darwin ]; then /bin/bash tests/run_all.sh standard
           else bash tests/run_all.sh standard; fi
+      - name: The whole game in one home, as a Mac without developer tools
+        if: matrix.os == 'macos-latest' || matrix.os == 'macos-26'
+        run: TQ_NOCLT=1 TQ_BASH=/bin/bash /bin/bash tests/autoplay.sh full
       - name: Mac under Rosetta 2 (Intel code on Apple silicon)
         if: startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel'
         run: |
