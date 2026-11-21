@@ -1,0 +1,69 @@
+# Every push and pull request: all the variants that matter, as parallel
+# jobs, so the whole run takes a few minutes (R24). tests/README.md lists
+# every variant and why it runs here, weekly, or not at all.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Syntax, Bash 3.2 constructs, shellcheck, design rules, guard, text widths
+        run: bash tests/run_all.sh static
+
+  play:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux - every level from a fresh home, every scenario
+            os: ubuntu-latest
+            run: bash tests/autoplay.sh @standard
+          - name: Linux - the whole game in one home
+            os: ubuntu-latest
+            run: bash tests/autoplay.sh full
+          - name: Linux - second driver (Python pty)
+            os: ubuntu-latest
+            run: python3 tests/autoplay.py @standard
+          - name: macOS Apple silicon - Bash 3.2, every level, every scenario
+            os: macos-latest
+            run: /bin/bash tests/run_all.sh standard
+          - name: macOS Apple silicon - whole game, no developer tools
+            os: macos-latest
+            run: TQ_NOCLT=1 /bin/bash tests/autoplay.sh full
+          - name: macOS Intel - the whole game
+            os: macos-15-intel
+            run: /bin/bash tests/autoplay.sh full
+    steps:
+      - uses: actions/checkout@v5
+      - name: Play
+        env:
+          # On a Mac: the system's own Bash 3.2, never Homebrew's.
+          TQ_BASH: ${{ startsWith(matrix.os, 'macos') && '/bin/bash' || 'bash' }}
+        run: ${{ matrix.run }}
+      - name: Keep the transcripts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcripts-${{ strategy.job-index }}
+          path: tests/out/
+          retention-days: 7

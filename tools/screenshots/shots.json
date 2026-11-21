@@ -1,0 +1,16 @@
+[
+  { "name": "title", "file": "sh-full.ansi", "title": "bash daemons-apprentice.sh",
+    "screen": "a terminal adventure for", "until": "Your choice:", "cutAtStart": true, "rows": 36 },
+  { "name": "pid1", "file": "sh-full.ansi", "title": "Level 0: Hello, Terminal",
+    "screen": "HELLO, TERMINAL", "until": "Mostly.", "rows": 25 },
+  { "name": "braces", "file": "sh-full.ansi", "title": "Level 3: Making Things",
+    "screen": "365 in one line", "until": "About half an hour.", "rows": 30 },
+  { "name": "crack", "file": "sh-full.ansi", "title": "Level 10: Your First Script",
+    "screen": "Find the match", "until": "the text came through a pipe", "rows": 23 },
+  { "name": "supervisor", "file": "sh-full.ansi", "title": "Side quest: The Supervisor",
+    "screen": "Job 1: the temporary files", "until": "One space. In a real home folder", "rows": 31 },
+  { "name": "portrait", "file": "sh-full.ansi", "title": "Side quest: Portrait of Your Computer",
+    "screen": "The portrait", "until": "$ ps -A -o rss,comm | sort -n | tail -n 3", "rows": 24 },
+  { "name": "certificate", "file": "sh-full.ansi", "title": "The finale",
+    "screen": "CERTIFICATE OF MASTERY", "until": "Both side quests done, too.", "rows": 18 }
+]

@@ -1,0 +1,10 @@
+{
+  "name": "daemons-apprentice-screenshots",
+  "private": true,
+  "description": "Renders README screenshots from real playthrough transcripts (see render.mjs)",
+  "type": "module",
+  "dependencies": {
+    "@xterm/xterm": "5.5.0",
+    "playwright-core": "1.56.1"
+  }
+}

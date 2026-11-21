@@ -1,0 +1,42 @@
+# Weekly, and by hand before a release: the same standard run on every
+# system version GitHub offers, to catch a new macOS or Ubuntu early (R24).
+name: Compatibility
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"     # Mondays, 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  play:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15, macos-26, macos-15-intel, ubuntu-22.04, ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Standard run
+        env:
+          TQ_BASH: ${{ startsWith(matrix.os, 'macos') && '/bin/bash' || 'bash' }}
+        run: |
+          if [ "$(uname -s)" = Darwin ]; then /bin/bash tests/run_all.sh standard
+          else bash tests/run_all.sh standard; fi
+      - name: Mac under Rosetta 2 (Intel code on Apple silicon)
+        if: startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel'
+        run: |
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            TQ_ARCH=x86_64 TQ_BASH=/bin/bash /bin/bash tests/autoplay.sh @quick
+          else echo "Rosetta 2 is not installed on this runner, skipped"; fi
+      - name: Keep the transcripts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcripts-${{ matrix.os }}
+          path: tests/out/
+          retention-days: 7

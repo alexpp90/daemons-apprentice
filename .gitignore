@@ -1,0 +1,6 @@
+tests/out/
+__pycache__/
+/private/
+/shots/
+node_modules/
+dist/
