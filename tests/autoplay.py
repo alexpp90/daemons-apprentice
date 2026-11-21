@@ -38,6 +38,12 @@ BASH = os.environ.get("TQ_BASH", "bash")
 GPATH = os.environ.get("TQ_PATH") or ("/usr/bin:/bin:/usr/sbin:/sbin" if sys.platform == "darwin"
                                       else os.environ.get("PATH", "/usr/bin:/bin"))
 
+# Started in the background by a shell without job control, this process
+# has Ctrl-C (SIGINT) ignored, and the game and `yes` would inherit that:
+# Ctrl-C would stop nothing. Python, unlike a shell, can undo it.
+if signal.getsignal(signal.SIGINT) == signal.SIG_IGN:
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+
 MARKER = re.compile(rb"<<TQ:([A-Za-z0-9_]+)(?::q(\d+))?>>")
 ANSI = re.compile(rb"\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][A-Z0-9]|\x1b[=>]")
 
@@ -153,7 +159,17 @@ class Game:
                 self.buf = self.buf[-1_000_000:]
                 self.pos = 0
                 self.alive = False
-                os.kill(self.pid, signal.SIGKILL)
+                self.kill_all()
+
+    def kill_all(self):
+        """Stop the game with everything it started (a runaway `yes` too):
+        pty.fork made the game the leader of its own process group."""
+        for kill in (lambda: os.killpg(self.pid, signal.SIGKILL),
+                     lambda: os.kill(self.pid, signal.SIGKILL)):
+            try:
+                kill()
+            except OSError:
+                pass
 
     def expect(self, patterns, timeout=15):
         """Wait until one of the regexes (bytes) matches after self.pos.
@@ -185,6 +201,8 @@ class Game:
             if len(self.buf) - a < 2000:
                 return
         res.fail("Ctrl-C did not stop the running program")
+        self.kill_all()  # or it runs on and fills the memory
+        self.alive = False
 
     def drain(self, t=0.3):
         end = time.time() + t

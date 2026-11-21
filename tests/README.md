@@ -132,6 +132,14 @@ computers, and at which of those differences have caused bugs or could.
 - Never run `tools/build.sh`, and never edit a test script, while a test
   run is going. Bash reads scripts as it runs them, so a changed file
   breaks the run.
-- The driver keeps job control on (`set -m`). Without it, Bash 3.2 starts
-  background jobs with Ctrl-C ignored, and a runaway `yes` would fill the
-  disk. A watchdog also stops any game whose log passes 200 MB.
+- Job control stays on (`set -m`) wherever test players and games are
+  started in the background. Without it, bash starts them with Ctrl-C
+  ignored. On a Mac the game and `yes` inherit that, and a runaway `yes`
+  once wrote 21 GB. `autoplay.sh` refuses to run with Ctrl-C ignored, and
+  `autoplay.py` switches it back on. A watchdog fails any game whose
+  program runs away (Ctrl-C has no effect, or the log passes 20 MB). It
+  stops the game with everything it started and cuts the log to 1 MB.
+- On a Mac the Python driver runs with Apple's `/usr/bin/python3`
+  (`TQ_PYTHON` overrides it). Under a Homebrew Python, macOS hides the
+  network from `netstat`, which breaks a Level 11 task for a reason no
+  player has.

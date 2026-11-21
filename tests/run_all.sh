@@ -116,13 +116,20 @@ start=$(date +%s)
   case "$TIER" in quick) group=@quick ;; standard) group=@standard ;; *) group=@all ;; esac
   bg_ids="" bg_pids=""
   bg() {   # ID: start that run in the background, its report in tests/out
+    # Job control on while starting it: without it, bash starts background
+    # jobs with Ctrl-C (SIGINT) ignored, the run inherits that and cannot
+    # undo it, and on a Mac (BSD script) the game and `yes` inherit it too:
+    # Ctrl-C stops nothing and `yes` fills the disk. Off again afterwards,
+    # so no job notices end up in the report.
+    set -m
     case "$1" in
       sh)    "$TQ_BASH" tests/autoplay.sh "$group" ;;
       noclt) TQ_NOCLT=1 "$TQ_BASH" tests/autoplay.sh full ;;
       intel) TQ_ARCH=x86_64 "$TQ_BASH" tests/autoplay.sh full ;;
-      py)    python3 tests/autoplay.py ;;
+      py)    "$PY" tests/autoplay.py ;;
     esac > "tests/out/run-$1.log" 2>&1 &
     bg_ids="$bg_ids $1"; bg_pids="$bg_pids $!"
+    set +m
   }
   label() {
     case "$1" in
@@ -143,12 +150,18 @@ start=$(date +%s)
       record "playthrough, Intel (x86_64)" "skipped (no Rosetta 2)"
     fi
   fi
+  # On a Mac, Apple's python3 (from the Command Line Tools), not one from
+  # Homebrew: macOS hides the network from programs a Homebrew Python
+  # starts (`netstat -an` lists no ports there), so Level 11's port task
+  # would fail for a reason no player has. TQ_PYTHON=... overrides it.
+  PY=${TQ_PYTHON:-python3}
+  [ "$OS" = macOS ] && PY=${TQ_PYTHON:-/usr/bin/python3}
   if [ "$TIER" != full ]; then
     :
-  elif [ "$OS" = macOS ] && ! xcode-select -p >/dev/null 2>&1; then
+  elif [ "$OS" = macOS ] && [ -z "${TQ_PYTHON:-}" ] && ! xcode-select -p >/dev/null 2>&1; then
     py_note="skipped: no Command Line Tools (python3 is only a stub); the Bash driver covers the same"
     record "playthroughs (autoplay.py)" "skipped (no python3)"
-  elif command -v python3 >/dev/null 2>&1; then
+  elif command -v "$PY" >/dev/null 2>&1; then
     bg py
   else
     py_note="python3 not installed, skipped"; record "playthroughs (autoplay.py)" "skipped (no python3)"

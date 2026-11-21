@@ -26,6 +26,18 @@ trap '' PIPE
 # ignored, and the game and every program it runs would inherit that
 # (Bash 3.2 does this; then `yes` cannot be stopped). Job control on.
 set -m
+# If Ctrl-C was already ignored when this script started (it was started in
+# the background by a shell without job control), no shell can undo that:
+# Ctrl-C would stop nothing in the game and `yes` would run until the disk
+# is full. Check it with a `sleep` and stop with an explanation instead:
+# stopped by Ctrl-C, it ends with status 130; ignoring it, it sleeps on.
+if [ "${1:-}" != --job ] &&
+   ! ( set -m; sleep 2 & p=$!; kill -INT "$p"; wait "$p"; [ $? -eq 130 ] ) 2>/dev/null; then
+  echo "autoplay.sh: Ctrl-C (SIGINT) is ignored in this process, so the game could not be"
+  echo "  tested. It was started in the background by a script without job control."
+  echo "  Start it in the foreground, or put 'set -m' before the '&' (tests/run_all.sh does)."
+  exit 2
+fi
 
 case "$(uname -s)" in Darwin) OS=mac; GLANG=en_US.UTF-8 ;; *) OS=linux; GLANG=C.UTF-8 ;; esac
 # The PATH the game sees. On a Mac it is the stock one by default, so the
@@ -107,6 +119,37 @@ start_game() {
 
 alive() { kill -0 "$GPID" 2>/dev/null; }
 
+# Stop the game at once with everything it started (a runaway `yes` too):
+# script, the game and its programs, found through their parent PIDs
+# before any of them is stopped.
+kill_game() {
+  local all=$GPID kids=$GPID
+  while [ -n "$kids" ]; do
+    kids=$(ps -A -o pid= -o ppid= | awk -v l=" $kids " 'index(l, " " $2 " ") {print $1}' | tr '\n' ' ')
+    kids=${kids% }
+    all="$all $kids"
+  done
+  # shellcheck disable=SC2086  # $all is a list of PIDs
+  kill -9 $all 2>/dev/null
+  # The keys now go nowhere: the `cat` that fed them gets end-of-file and
+  # ends, so the wait (for the whole pipeline) returns, and alive() says no.
+  exec 7>/dev/null
+  wait "$GPID" 2>/dev/null
+}
+
+# A program ran away (Ctrl-C did not stop it, or the log grew too big):
+# fail, stop it, and keep only the first megabyte of its log, so neither
+# the disk nor the searches through the log are swamped.
+RUNAWAY_MAX=20000000
+runaway() {
+  fail "$1"
+  kill_game
+  head -c 1000000 "$LOG" > "$LOG.cut" 2>/dev/null
+  printf '\n[autoplay: log cut here, a program ran away]\n' >> "$LOG.cut"
+  mv -f "$LOG.cut" "$LOG"
+  POS=$(logsize)
+}
+
 stop_game() {
   sleep 0.5
   exec 7>&- 2>/dev/null
@@ -133,8 +176,9 @@ ctrl_c_until_quiet() {
     keys '\003'; sleep 0.6
     a=$(logsize); sleep 0.4; b=$(logsize)
     [ $((b - a)) -lt 2000 ] && return 0
+    [ "$b" -gt "$RUNAWAY_MAX" ] && break
   done
-  fail "Ctrl-C did not stop the running program"
+  runaway "Ctrl-C did not stop the running program"
 }
 keys()  { ( printf "$1" ) >&7 2>/dev/null; }         # raw keys, printf escapes
 
@@ -162,12 +206,13 @@ expect() {
       [ -n "$r" ] && { M=$1; return 0; }
       return 2
     fi
-    [ "$(date +%s)" -ge "$end" ] && return 1
-    # Safety net: never let a runaway program fill the disk.
-    if [ "$(logsize)" -gt 200000000 ]; then
-      fail "log over 200 MB, a program ran away; stopping this game"
-      kill "$GPID" 2>/dev/null; return 2
+    # Safety net: never let a runaway program fill the disk. Checked before
+    # the timeout, which a slow search through a big log could hit first.
+    if [ "$(logsize)" -gt "$RUNAWAY_MAX" ]; then
+      runaway "log over 20 MB, a program ran away; stopping this game"
+      return 2
     fi
+    [ "$(date +%s)" -ge "$end" ] && return 1
     sleep 0.1
   done
 }
@@ -238,16 +283,28 @@ special() {
   return 0
 }
 
+# Can openssl here (same PATH, same architecture as the game) do -pbkdf2?
+# The same round trip the game tries (tq_pbkdf2_ok), done independently.
+pbkdf2_here() {
+  if [ -z "${PBKDF2_HERE:-}" ]; then
+    PBKDF2_HERE=0
+    env -i PATH="$GPATH" $GRUN -c 'printf x | openssl enc -aes-256-cbc -pbkdf2 -iter 2 -pass pass:x 2>/dev/null |
+      openssl enc -d -aes-256-cbc -pbkdf2 -iter 2 -pass pass:x 2>/dev/null | grep -q "^x\$"' 2>/dev/null && PBKDF2_HERE=1
+  fi
+  [ "$PBKDF2_HERE" = 1 ]
+}
+
 # play [STOP_ID]: answer every prompt with solutions until the main menu
 # appears (PLAY_END=menu) or task STOP_ID comes up (PLAY_END=STOP_ID).
 play() {
-  local stop=${1:-} last="" id q k n steps=0 vars t
+  local stop=${1:-} last="" id q k n steps=0 vars t p0
   vars=""
   PLAY_END=""
   while [ "$steps" -lt 3000 ]; do
     steps=$((steps + 1))
     # A task tagged "slow" walks through real folders (R22): give it time.
     t=30; [ -n "$last" ] && [ "$(drive_of "$last")" = slow ] && t=240
+    p0=$POS
     expect "$MARK|\\[ press Enter \\]|Your choice:|\\[y/n\\]" "$t"
     case $? in
       1) fail "timeout (last task $last)"; PLAY_END=timeout; return ;;
@@ -279,6 +336,20 @@ play() {
     eval "k=\${SENT_$id:-0}"
     n=$(sol_count "$id")
     case "$(drive_of "$id")" in ''|quiz*) ;; *) n=1 ;; esac
+    # A lab the game says cannot run on this computer: skip it, as the game
+    # asks the player to, but only if openssl here really cannot do -pbkdf2
+    # (as on macOS 27 under Rosetta 2, where Intel openssl crashes on it).
+    if LC_ALL=C tail -c +$((p0 + 1)) "$LOG" 2>/dev/null | head -c $((POS - p0)) |
+         grep -q 'this lab cannot run on this computer'; then
+      if pbkdf2_here; then
+        fail "$id: the game says this lab cannot run, but openssl here can do -pbkdf2"
+      else
+        note "$id: openssl here cannot do -pbkdf2, the game says so; skipped as it asks"
+        LAB_SKIPS=$((${LAB_SKIPS:-0} + 1))
+      fi
+      send skip
+      continue
+    fi
     if [ "$k" -ge "$n" ]; then
       fail "$id: not solved by its solution; skipping"
       send skip
@@ -349,8 +420,15 @@ sc_level() {
   local l=$1
   new_home; start_game "level${l}_cold"; reset_sent
   menu_level "$l"
+  LAB_SKIPS=0
   PLAY_LEVEL=$l play
-  transcript | grep -q "$(lname "$l"): \([0-9]*\) of \1 tasks solved" || fail "level $l: not all tasks solved cold ($PLAY_END)"
+  if [ "$LAB_SKIPS" -gt 0 ]; then   # solved = all but the labs the game said to skip
+    transcript | grep -E "$(lname "$l"): [0-9]+ of [0-9]+ tasks solved" | tail -n 1 |
+      awk -v s="$LAB_SKIPS" '{ for (i = 2; i < NF; i++) if ($i == "of") { x = $(i-1); y = $(i+1) } } END { exit !(y - x == s) }' ||
+      fail "level $l: not all tasks solved cold but the $LAB_SKIPS skipped labs ($PLAY_END)"
+  else
+    transcript | grep -q "$(lname "$l"): \([0-9]*\) of \1 tasks solved" || fail "level $l: not all tasks solved cold ($PLAY_END)"
+  fi
   if [ "$PLAY_END" = menu ]; then send q; else send quit; fi
   expect "Progress saved" 8
   stop_game; drop_home
@@ -770,7 +848,12 @@ for sc in $ALL; do
     *) joblist="$joblist $sc" ;;
   esac
 done
-case " $joblist " in *" full "*) joblist="full ${joblist/ full / }" ;; esac
+# (Moved, not copied: with "full" alone, a copy would play it twice at the
+# same time into one transcript.)
+case " $joblist " in *" full "*)
+  rest=""; for j in $joblist; do [ "$j" = full ] || rest="$rest $j"; done
+  joblist="full$rest" ;;
+esac
 
 pids="" names=""
 start_job() {   # NAME (scenario, or level:N)
