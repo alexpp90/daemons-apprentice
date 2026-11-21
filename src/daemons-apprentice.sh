@@ -7198,11 +7198,19 @@ Start `ps` at a polite priority and see its own niceness in the list:
 EOF
   fi ;;
 check)
-  tq_line_has "nice" && tq_line_has "15" && tq_out_num 15 && return 0
+  # nice -n 15 adds 15 to the niceness the terminal already has. That is 0
+  # almost everywhere, so the player sees 15; where the terminal itself runs
+  # at another niceness (GitHub's Mac test machines use -10), accept the sum.
+  local want
+  want=$(ps -o ni= -p $$ 2>/dev/null | tr -d ' ')
+  case "$want" in ''|*[!0-9-]*|-) want=0 ;; esac
+  want=$((want + 15))
+  if [ "$TQ_OS" = mac ]; then [ "$want" -gt 20 ] && want=20; else [ "$want" -gt 19 ] && want=19; fi
+  tq_line_has "nice" && tq_line_has "15" && { tq_out_num 15 || tq_out_num "$want"; } && return 0
   # The background job may not be polite yet when ps looks (a race of a
   # few milliseconds): then it is now.
   tq_line_has "nice" && tq_line_has "15" && tq_line_has "&" && tq_line_has "ps" &&
-    ps -x -o ni=,comm= 2>/dev/null | awk '$1 == 15 && $2 ~ /sleep/ { f = 1 } END { exit !f }' && return 0
+    ps -x -o ni=,comm= 2>/dev/null | awk -v w="$want" '($1 == 15 || $1 == w) && $2 ~ /sleep/ { f = 1 } END { exit !f }' && return 0
   tq_line_has "nice" && tq_fb "$(tq_os 'Start `nice -n 15 sleep 30 &` and then run `ps -o pid,ni,comm`, so you can see the 15.' 'Pass `-n 15` and run `ps -o pid,ni,comm` so you can see the 15.')"
   return 1 ;;
 hint1) echo '`nice -n 15` runs the following command at niceness 15.' ;;
