@@ -643,7 +643,7 @@ def sc_guard_live(sol):
 
 def sc_placement(sol):
     res = Result("placement")
-    for answers, want in [("a b a b b a a b b b", 11), ("a b b", 3), ("c", 0)]:
+    for answers, want in [("a b a b b a a b b b a b", 16), ("a b a b b a a b b b c", 11), ("a b b", 3), ("c", 0)]:
         home = new_home()
         g = Game(home, f"placement_{want}")
         g.expect([CHOICE])

@@ -55,15 +55,16 @@ an AI agent that is about to make a mistake.
   tells you what each part of it does. It builds one habit from the first
   minute: *never run a command you don't understand*, whoever suggests
   it. A website, a chat, an AI. Or this game.
-- **Small steps, big moments.** 194 tasks, each one small enough to
-  manage. Some of them show you the power of the terminal: one line makes
-  365 folders, and one loop cracks a password.
+- **Small steps, big moments.** 238 tasks across 6 rated chapters (Beginner,
+  Intermediate, Advanced), each one small enough to manage. One line makes
+  365 folders, one loop cracks a password, and real local labs teach you
+  how attackers think so you can defend yourself.
 - **Stuck? Help is one word away.** `hint` gives you a nudge, `help` lists
   everything, and `keys` shows how to type `{`, `|` or `~` on *your*
   keyboard (US and German, Mac and Linux). The game notices when a key is
   giving you trouble.
 - **You keep what you learn.** Each task you solve adds its command to your
-  own `CHEATSHEET.md`. You also collect 16 flags and earn a certificate at
+  own `CHEATSHEET.md`. You also collect 24 flags and earn a certificate at
   the end.
 - **It can't hurt your computer.** See [Safe by design](#safe-by-design).
 
@@ -88,6 +89,10 @@ an AI agent that is about to make a mistake.
 
 ## The journey
 
+Six chapters rated **Beginner**, **Intermediate**, and **Advanced**, plus two optional side quests:
+
+### Chapter 1: Terminal Basics (`Beginner`)
+
 | | Level | What you'll do |
 |---|---|---|
 | 0 | **Hello, Terminal** | Meet Pid1. Say hello, find out where you are, and search a short history of computers. |
@@ -95,19 +100,48 @@ an AI agent that is about to make a mistake.
 | 2 | **Finding Your Way** | Walk into folders, back out of them and straight home. Find hidden things and a secret passage. |
 | 3 | **Making Things** | Make files and folders, copy, move and delete them, with a careful look first. Then 365 folders in one line. |
 | 4 | **Text Power** | First lines, last lines, counting, searching. Your first pipe sorts a messy list. |
+
+### Chapter 2: Inside Your Computer (`Beginner`)
+
+| | Level | What you'll do |
+|---|---|---|
 | 5 | **Inside the Machine** | Meet the kernel, the processor and the memory. Learn why devices are files, roll dice from a device, and use the black hole. |
 | 6 | **Processes and Variables** | See what's running, then find an intruder and stop it. Explore the environment and find where commands live. |
 | 7 | **Locks and Keys** | Permissions, hidden dot-files, and the shell's memory. Never trust the client. |
+| S1 | *Portrait of Your Computer* | Optional side quest (after Level 6): read-only questions about your own machine, collected into a report. |
+
+### Chapter 3: Scripting & AI Agents (`Intermediate`)
+
+| | Level | What you'll do |
+|---|---|---|
 | 8 | **The Editor** | Your first text editor (nano), and your first script. |
 | 9 | **Building Blocks** | Put a command inside a command, run two at once, and write loops over lines and files. |
 | 10 | **Your First Script** | Write scripts that listen, rename ten files at once, and crack a password vault with a loop. |
 | 11 | **Agent Mode** | Encoded isn't encrypted. Unmask a fake command, find instructions hidden in a file, and investigate an attack in real logs. |
+| S2 | *The Supervisor* | Optional side quest (after Level 11): supervise an AI agent on a mission. What you allow really runs. |
+
+### Chapter 4: Under the Hood & Isolation (`Intermediate`)
+
+| | Level | What you'll do |
+|---|---|---|
 | 12 | **Behind the Curtain** | The system's diary, background jobs and niceness. Two workers fight over one file. Why can't computers roll dice? |
-| 13 | **Break It, Fix It** | Crack a weak lock, make guessing expensive, read a postcard on the wire, inject a command and patch the hole. |
-| 14 | **The Virus Lab** | Grow a harmless virus in a glass petri dish: watch it spread, cut its hook, disinfect, and learn what antivirus really checks. |
-| 15 | **Glass Rooms & Iron Walls** | Sandboxes, containers and virtual machines: what each one walls off, and how to tell which one you're in. |
-| S1 | *Portrait of Your Computer* | An optional side quest: read-only questions about your own machine, collected into a report. |
-| S2 | *The Supervisor* | An optional side quest: supervise an AI agent on a mission. What you allow really runs. |
+| 13 | **Glass Rooms & Iron Walls** | Sandboxes, containers and virtual machines: what each one walls off, and how to tell which one you're in. |
+
+### Chapter 5: Security Foundations & Malware (`Intermediate`)
+
+| | Level | What you'll do |
+|---|---|---|
+| 14 | **Break It, Fix It** | Crack a weak lock, make guessing expensive, read a postcard on the wire, inject a command and patch the hole. |
+| 15 | **The Virus Lab** | Grow a harmless virus in a glass petri dish: watch it spread, cut its hook, disinfect, and learn what antivirus really checks. |
+
+### Chapter 6: Real-World Pentesting & Defense (`Advanced`)
+
+| | Level | What you'll do |
+|---|---|---|
+| 16 | **Local Recon & Privilege Traps** | Scan SUID binaries, hijack and lock down a writable scheduled job, test symlink redirection, and stop wildcard flag injection with `--`. |
+| 17 | **Web & HTTP Exploitation** | Fingerprint a local HTTP target, grab exposed secrets, exploit `../` path traversal, IDOR and forged cookies, then patch the server and verify every fix. |
+| 18 | **Terminal & Supply-Chain Traps** | Unmask hidden terminal escape bytes (`cat -v`), catch a Tar Slip archive (`tar -tf`), audit SSH keys and backdoors, and sign/verify releases with `openssl`. |
+| 19 | **Network Exposure & TLS Defense** | Lock down `0.0.0.0` listeners to `127.0.0.1`, see why outbound callbacks bypass inbound firewalls, inspect HTTPS certs, and pin with `--cacert` instead of `-k`. |
 
 Know a bit already? The **placement check** finds the right level for you,
 and the level menu lets you jump anywhere.
