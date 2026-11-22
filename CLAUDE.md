@@ -12,6 +12,9 @@ A single-file Bash game that teaches the terminal on macOS and Linux.
   script while a test run is going: bash reads scripts as it runs them.
 - The game must run on the Mac's `/bin/bash` 3.2 with stock BSD tools: no
   Bash 4+ features, no GNU-only flags (the static checks scan for them).
+- The Android app is `android/` (Gradle, Kotlin, Compose); see
+  `android/README.md`. Device tests run on emulators only
+  (`android/tools/device-tests.sh`).
 - Releases: push a tag `vX.Y` that matches `TQ_VERSION`. CI tests it, packs
   it (`tools/package.sh`) and publishes it. `CHANGELOG.md` needs a
   `## X.Y` section.
