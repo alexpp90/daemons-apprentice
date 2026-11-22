@@ -82,6 +82,7 @@ object KeyHelp {
         ")" to ("a closing parenthesis" to "Shift + 9"),
         "%" to ("the percent sign" to "Shift + 5"),
         "=" to ("the equals sign" to "Shift + 0"),
+        "&" to ("an ampersand" to "Shift + 6"),
     )
 
     fun card(keys: List<String>): String = buildString {

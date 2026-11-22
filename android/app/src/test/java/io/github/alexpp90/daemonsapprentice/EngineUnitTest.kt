@@ -119,3 +119,23 @@ class Milestone2Test {
         root.deleteRecursively()
     }
 }
+
+/** Milestone 3 (Levels 10 to 15): the trip to the home screen. */
+class Milestone3Test {
+    @Test fun aQuickTripHomeDoesNotCount() = kotlinx.coroutines.runBlocking<Unit> {
+        val root = java.nio.file.Files.createTempDirectory("apprentice").toFile()
+        val dirs = io.github.alexpp90.daemonsapprentice.game.GameDirs(root)
+        dirs.playground.mkdirs(); dirs.game.mkdirs()
+        val g = io.github.alexpp90.daemonsapprentice.game.GameEngine(dirs, HostShell(dirs.playground, dirs.home), random = kotlin.random.Random(1))
+        g.start()
+        g.jumpTo(15)
+        while (g.state.value.wait == io.github.alexpp90.daemonsapprentice.game.Wait.Continue) g.onContinue()
+        repeat(4) { g.submit("skip"); while (g.state.value.wait == io.github.alexpp90.daemonsapprentice.game.Wait.Continue) g.onContinue() }
+        org.junit.Assert.assertEquals("Go away", g.state.value.taskTitle)
+        g.cameBack(2_000)
+        org.junit.Assert.assertEquals(io.github.alexpp90.daemonsapprentice.game.Wait.Prompt, g.state.value.wait)
+        g.cameBack(9_000)
+        org.junit.Assert.assertEquals(io.github.alexpp90.daemonsapprentice.game.Wait.Continue, g.state.value.wait)
+        root.deleteRecursively()
+    }
+}

@@ -258,7 +258,7 @@ class GameEngine(
         _state.update { it.copy(task = it.taskCount, pinned = "**Level ${level.number} complete**", chips = emptyList(), showChips = false) }
         val next = levels.getOrNull(levelIndex + 1)
         if (next == null) {
-            append(text("Level ${level.number + 1} comes with the next build of this app. Your progress is saved.", Line.Kind.Note))
+            append(text("That was the last level of this build. More comes with the next one; your progress is saved.", Line.Kind.Note))
             setWait(Wait.Done)
             return
         }
@@ -417,6 +417,13 @@ class GameEngine(
         }
         if (task.gameCommand == c && _state.value.wait == Wait.Prompt) { solved(); return }
         if (_state.value.wait != Wait.Continue) setWait(Wait.Prompt)
+    }
+
+    /** The app was away from the screen for [awayMs] (the player went to the home screen) and is back. */
+    suspend fun cameBack(awayMs: Long) {
+        if (task.event != "away" || _state.value.wait != Wait.Prompt) return
+        if (awayMs >= 5_000) { append(text("Welcome back. You were away ${awayMs / 1000} seconds.", Line.Kind.Note)); solved() }
+        else append(text("That was quick (${awayMs / 1000} s). Stay away about ten seconds, then come back.", Line.Kind.Note))
     }
 
     /** The file picker came back (the player pressed Back or picked something). */

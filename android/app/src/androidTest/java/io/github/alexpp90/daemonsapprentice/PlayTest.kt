@@ -42,6 +42,13 @@ class PlayTest {
     private val tasks: List<Task> = Levels.all.flatMap { it.tasks }
     private val lastLevel = Levels.all.last().number
     private val dirs by lazy { GameDirs(ctx.filesDir) }
+
+    /** Level 15: the home screen for a while, then back to the game, as a player would. */
+    private fun awayAndBack() {
+        device.pressHome()
+        Thread.sleep(8_000)
+        shell("am start -n ${ctx.packageName}/.MainActivity")
+    }
     /** Editor tasks: the text the player adds at the end of the file. */
     private fun appended(t: Task) = t.drive?.takeIf { it.startsWith("edit-append:") }?.removePrefix("edit-append:")
 
@@ -158,6 +165,11 @@ class PlayTest {
                 if (exists("next")) tap("next")
                 waitFor { exists("next") || exists("prompt-ready") }
             }
+            if (d == "home") {
+                awayAndBack()
+                waitFor(30_000) { exists("next") }
+                continue
+            }
             if (!exists(firstChip)) {
                 tap("hint")
                 waitFor { exists(firstChip) }
@@ -272,6 +284,7 @@ class PlayTest {
                     check(now.startsWith(t.solution), "Tab gave '$now' in ${t.id}")
                     enter()
                 }
+                d == "home" -> awayAndBack()
                 d == "more-ctrlc" -> {
                     type(t.solution); enter()
                     waitFor { exists("prompt-more") }

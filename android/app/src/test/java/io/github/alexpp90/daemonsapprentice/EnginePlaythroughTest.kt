@@ -56,7 +56,7 @@ class HostShell(start: File, home: File = start) : Shell {
     init {
         val bin = Files.createTempDirectory("fakebin").toFile()
         File(bin, "getprop").apply {
-            writeText("#!/bin/sh\ncase \"$1\" in ro.build.version.release) echo 17;; ro.product.model) echo Host computer;; *) echo;; esac\n")
+            writeText("#!/bin/sh\ncase \"$1\" in ro.build.version.release) echo 17;; ro.product.model) echo Host computer;; ro.zygote) echo zygote64;; ro.build.version.security_patch) echo 2026-08-05;; *) echo;; esac\n")
             setExecutable(true)
         }
         val pb = ProcessBuilder("bash", "--norc", "--noprofile", "--noediting", "-i").redirectErrorStream(true).directory(start)
@@ -111,6 +111,17 @@ class EnginePlaythroughTest {
 
     private fun newGame(): Pair<GameEngine, File> {
         val root = Files.createTempDirectory("apprentice").toFile()
+        // Level 13's APK: a stand-in zip with code and a native library, read-only like the real one.
+        val apk = File(root, "app/base.apk")
+        apk.parentFile.mkdirs()
+        java.util.zip.ZipOutputStream(apk.outputStream()).use { z ->
+            for ((name, bytes) in listOf("AndroidManifest.xml" to "<manifest/>".toByteArray(),
+                "classes.dex" to "dex\n039\u0000 code".toByteArray(), "lib/x86_64/libapprentice-pty.so" to ByteArray(16))) {
+                z.putNextEntry(java.util.zip.ZipEntry(name)); z.write(bytes); z.closeEntry()
+            }
+        }
+        apk.setWritable(false, false)
+        io.github.alexpp90.daemonsapprentice.game.AppInfo.apk = apk.absolutePath
         val dirs = GameDirs(root)
         dirs.playground.mkdirs(); dirs.game.mkdirs()
         return GameEngine(dirs, HostShell(dirs.playground, dirs.home), random = Random(1)) to root
@@ -148,6 +159,7 @@ class EnginePlaythroughTest {
                     g.interrupt()
                 }
                 d == "lines" -> solution.lines().forEach { g.submit(it) }
+                d == "home" -> { delay(2_000); g.cameBack(10_000) } // a real player is away for seconds
                 d.startsWith("edit-append:") -> {
                     g.submit(solution)
                     assertEquals("${t.id}: editor", Wait.Editing, g.state.value.wait)

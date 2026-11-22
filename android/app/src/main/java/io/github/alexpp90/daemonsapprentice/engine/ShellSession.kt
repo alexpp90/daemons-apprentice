@@ -129,7 +129,14 @@ class ShellSession(
             "set +o vi 2>/dev/null\n" +
             "PS1='\u001e\$?;\$PWD\u001f'\n" +
             "PS2='\u001d'\n" +
-            "HISTSIZE=500\n"
+            "HISTSIZE=500\n" +
+            // Android's system refuses a terminal handed to it by an app: these tools send their
+            // input and output to the system, so they get /dev/null and a pipe instead.
+            "pm() { command pm \"\$@\" < /dev/null 2>&1 | cat; return \${PIPESTATUS[0]}; }\n" +
+            "settings() { command settings \"\$@\" < /dev/null 2>&1 | cat; return \${PIPESTATUS[0]}; }\n" +
+            "cmd() { command cmd \"\$@\" < /dev/null 2>&1 | cat; return \${PIPESTATUS[0]}; }\n" +
+            "am() { command am \"\$@\" < /dev/null 2>&1 | cat; return \${PIPESTATUS[0]}; }\n" +
+            "dumpsys() { command dumpsys \"\$@\" < /dev/null 2>&1 | cat; return \${PIPESTATUS[0]}; }\n"
         )
     }
 

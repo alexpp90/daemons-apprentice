@@ -16,7 +16,10 @@ import kotlinx.coroutines.launch
 
 class GameViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val dirs = GameDirs(app.filesDir)
+    private val dirs = GameDirs(app.filesDir).also {
+        io.github.alexpp90.daemonsapprentice.game.AppInfo.pkg = app.packageName
+        io.github.alexpp90.daemonsapprentice.game.AppInfo.apk = app.applicationInfo.sourceDir
+    }
     private var shell = newShell()
     private var engine = GameEngine(dirs, shell)
 
@@ -47,6 +50,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     fun submit(text: String) = viewModelScope.launch { engine.submit(text) }
     fun next() = viewModelScope.launch { engine.onContinue() }
     fun interrupt() { viewModelScope.launch { engine.interrupt() } }
+    fun cameBack(awayMs: Long) = viewModelScope.launch { engine.cameBack(awayMs) }
     fun editorClosed(text: String?) = viewModelScope.launch { engine.editorClosed(text) }
     fun complete(text: String) = engine.complete(text)
     fun jumpTo(level: Int) = viewModelScope.launch { engine.jumpTo(level) }

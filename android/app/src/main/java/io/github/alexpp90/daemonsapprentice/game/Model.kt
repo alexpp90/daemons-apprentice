@@ -14,6 +14,12 @@ class GameDirs(filesDir: File) {
     val rc = File(game, "shrc")
 }
 
+/** The app itself, as Level 13 shows it: its package name and its APK (set at start; tests set a stand-in). */
+object AppInfo {
+    @Volatile var pkg: String = "io.github.alexpp90.daemonsapprentice"
+    @Volatile var apk: String = ""
+}
+
 /** One command line the player sent, and what came back. */
 data class Attempt(
     val line: String,
@@ -82,6 +88,8 @@ class Task(
     val solve: ((GameDirs) -> String)? = null,
     /** This task may write the save file (Level 7 shows why a game must not trust it). */
     val allowSave: Boolean = false,
+    /** Solved by something the player does outside the terminal: `away` = to the home screen and back. */
+    val event: String? = null,
     /** Commands that only look around: never called wrong (R17). */
     val lookAround: Set<String> = setOf("ls", "pwd", "cat", "echo", "date", "whoami"),
 )

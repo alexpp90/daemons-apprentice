@@ -5,7 +5,8 @@ import java.io.File
 /** The level list, in one place (R8). */
 object Levels {
     val all: List<Level> by lazy { listOf(Level0.level, Level1.level, Level2.level, Level3.level, Level4.level,
-        Level5.level, Level6.level, Level7.level, Level8.level, Level9.level) }
+        Level5.level, Level6.level, Level7.level, Level8.level, Level9.level,
+        Level10.level, Level11.level, Level12.level, Level13.level, Level14.level, Level15.level) }
 }
 
 /** Writes the file unless it already has exactly this text. */

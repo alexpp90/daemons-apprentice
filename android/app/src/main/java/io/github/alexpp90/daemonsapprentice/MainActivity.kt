@@ -29,6 +29,16 @@ class MainActivity : ComponentActivity() {
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { vm.filePickerClosed() }
 
+    private var stoppedAt = 0L
+
+    // Level 15 sends the player to the home screen and back.
+    override fun onStop() { super.onStop(); stoppedAt = android.os.SystemClock.elapsedRealtime() }
+    override fun onStart() {
+        super.onStart()
+        if (stoppedAt > 0) vm.cameBack(android.os.SystemClock.elapsedRealtime() - stoppedAt)
+        stoppedAt = 0
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
             statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),

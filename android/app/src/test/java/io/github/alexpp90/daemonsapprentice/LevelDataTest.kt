@@ -25,7 +25,7 @@ class LevelDataTest {
     /** R28: every task can be solved by tapping chips alone (from Level 2 on, after `hint`). */
     @Test fun chipsCoverEverySolution() {
         for (lv in levels) for (t in lv.tasks) {
-            if (t.solve != null) continue // its chips are made from the live solution
+            if (t.solve != null || t.event != null) continue // chips from the live solution; or no command at all
             val words = ChipWords.split(t.solution)
             assertTrue("${t.id}: chips ${t.chips} do not cover '${t.solution}'", words.all { it in t.chips })
         }
@@ -58,8 +58,8 @@ class LevelOrderTest {
 
     @Test fun hardCharactersAreOfferedOnTheKeyBar() {
         // A solution with | ~ { } > * must name it in `keys`, so the key bar highlights it and the typing help appears.
-        for (lv in Levels.all) for (t in lv.tasks.filter { it.solve == null }) // `kill <PID>` is a placeholder
-            for (c in listOf("|", "~", "{", "}", ">", "*", "$", ";", "\"", "(", ")", "%", "="))
+        for (lv in Levels.all) for (t in lv.tasks.filter { it.solve == null && it.event == null }) // placeholders, no command
+            for (c in listOf("|", "~", "{", "}", ">", "*", "$", ";", "\"", "(", ")", "%", "=", "&"))
                 if (t.solution.contains(c)) assertTrue("${t.id}: '$c' not in keys", c in t.keys)
     }
 }
