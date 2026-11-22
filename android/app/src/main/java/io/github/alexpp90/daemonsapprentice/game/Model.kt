@@ -9,6 +9,8 @@ class GameDirs(filesDir: File) {
     val playground = File(home, "playground")
     val game = File(filesDir, "game")
     val save = File(home, ".apprentice-save")
+    /** The PID of Level 6's background intruder. */
+    val minerPid = File(game, "miner.pid")
     val rc = File(game, "shrc")
 }
 
@@ -30,7 +32,11 @@ data class Attempt(
 ) {
     fun ran(c: String) = c in commands
     fun outHas(s: String) = output.contains(s)
+    fun lines() = output.lines().map { it.trim() }.filter { it.isNotEmpty() }
 }
+
+/** The solution for this phone right now. */
+fun Task.solutionNow(dirs: GameDirs) = solve?.invoke(dirs) ?: solution
 
 /** Collects the specific feedback a check wants to give. */
 class Feedback { var message: String? = null; fun say(m: String) { if (message == null) message = m } }
@@ -66,8 +72,16 @@ class Task(
     val how: String,
     /** A flag the task hands out (saved, counted in the cheatsheet). */
     val flag: String? = null,
-    /** For the test players: how this task is driven beyond typing (`ctrlc`: stop it with Ctrl-C). */
+    /**
+     * For the test players: how this task is driven beyond typing. `ctrlc`: stop it with Ctrl-C;
+     * `more-ctrlc`: Ctrl-C at the shell's `>` prompt; `lines`: the solution's lines one after
+     * another; `edit-append:TEXT`: in the editor, add TEXT at the end; `device`: only on a phone.
+     */
     val drive: String? = null,
+    /** The solution as it is on this phone right now (e.g. with a PID); chips follow it. */
+    val solve: ((GameDirs) -> String)? = null,
+    /** This task may write the save file (Level 7 shows why a game must not trust it). */
+    val allowSave: Boolean = false,
     /** Commands that only look around: never called wrong (R17). */
     val lookAround: Set<String> = setOf("ls", "pwd", "cat", "echo", "date", "whoami"),
 )

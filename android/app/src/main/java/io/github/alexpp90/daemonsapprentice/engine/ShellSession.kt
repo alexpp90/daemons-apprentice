@@ -164,6 +164,19 @@ class ShellSession(
         }
     }
 
+    override suspend fun cancelInput(): ShellResult {
+        val d = CompletableDeferred<ShellResult>()
+        synchronized(lock) {
+            if (!alive) return ShellResult("", -1, folder)
+            pending = d; onOut = null; busy = true; interrupted = true
+        }
+        // The terminal turns Ctrl-C into SIGINT for the shell itself: it drops the line and prompts again.
+        withContext(Dispatchers.IO) { write("\u0003") }
+        return withTimeoutOrNull(5_000) { d.await() } ?: ShellResult("", 130, folder, interrupted = true)
+    }
+
+    override val ownPids: Set<Int> get() = setOf(pid, android.os.Process.myPid())
+
     override fun sendInput(line: String) { thread(isDaemon = true) { write(line + "\n") } }
 
     override fun resize(rows: Int, cols: Int) { if (fd >= 0) Pty.resize(fd, rows, cols) }

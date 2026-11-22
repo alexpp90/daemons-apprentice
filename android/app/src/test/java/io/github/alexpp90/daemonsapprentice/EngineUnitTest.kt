@@ -73,3 +73,49 @@ class EngineUnitTest {
         dir.deleteRecursively()
     }
 }
+
+/** Milestone 2 (Levels 5 to 9): chips with quotes, kill, loops, the editor. */
+class Milestone2Test {
+    private val guard = io.github.alexpp90.daemonsapprentice.engine.Guard("/f/game", "/f/home/.apprentice-save") { setOf(100, 200) }
+
+    @Test fun chipWordsKeepQuotesAndSubstitutionsTogether() {
+        val split = io.github.alexpp90.daemonsapprentice.game.ChipWords::split
+        org.junit.Assert.assertEquals(listOf("echo", "\"today is \$(date +%A)\""), split("echo \"today is \$(date +%A)\""))
+        org.junit.Assert.assertEquals(listOf("for", "i", "in", "\$(seq 365)", ";", "do", "mkdir", "day-\$i", ";", "done"),
+            split("for i in \$(seq 365); do mkdir day-\$i; done"))
+        org.junit.Assert.assertEquals(listOf("echo", "\${f%.JPG}.jpg"), split("echo \${f%.JPG}.jpg"))
+    }
+
+    @Test fun killMayNotHitTheGameItself() {
+        org.junit.Assert.assertFalse(guard.check("kill 100").allowed)
+        org.junit.Assert.assertFalse(guard.check("kill -9 200").allowed)
+        org.junit.Assert.assertFalse(guard.check("kill -9 -1").allowed)
+        org.junit.Assert.assertFalse(guard.check("kill \$\$").allowed)
+        org.junit.Assert.assertFalse(guard.check("pkill sh").allowed)
+        org.junit.Assert.assertTrue(guard.check("kill 4321").allowed)
+    }
+
+    @Test fun loopsAreCheckedCommandByCommand() {
+        org.junit.Assert.assertEquals(listOf("for", "mv"), guard.commands("for f in *.JPG; do mv \$f \${f%.JPG}.jpg; done"))
+        org.junit.Assert.assertEquals(listOf("for", "rm"), guard.commands("for x in 1\ndo rm -r /f/game\ndone"))
+        org.junit.Assert.assertFalse(guard.check("for x in 1\ndo rm -r /f/game\ndone", "/f/home", "/f/home").allowed)
+    }
+
+    @Test fun theEditorStaysInTheHomeFolder() = kotlinx.coroutines.runBlocking<Unit> {
+        val root = java.nio.file.Files.createTempDirectory("apprentice").toFile()
+        val dirs = io.github.alexpp90.daemonsapprentice.game.GameDirs(root)
+        dirs.playground.mkdirs(); dirs.game.mkdirs()
+        val g = io.github.alexpp90.daemonsapprentice.game.GameEngine(dirs, HostShell(dirs.playground, dirs.home), random = kotlin.random.Random(1))
+        g.start()
+        while (g.state.value.wait == io.github.alexpp90.daemonsapprentice.game.Wait.Continue) g.onContinue()
+        for (bad in listOf("edit ../../game/shrc", "edit ~/.apprentice-save", "edit /etc/hosts")) {
+            g.submit(bad)
+            org.junit.Assert.assertEquals(bad, io.github.alexpp90.daemonsapprentice.game.Wait.Prompt, g.state.value.wait)
+        }
+        g.submit("edit mine.txt")
+        org.junit.Assert.assertEquals(io.github.alexpp90.daemonsapprentice.game.Wait.Editing, g.state.value.wait)
+        g.editorClosed("hello\n")
+        org.junit.Assert.assertEquals("hello\n", java.io.File(dirs.playground, "mine.txt").readText())
+        root.deleteRecursively()
+    }
+}

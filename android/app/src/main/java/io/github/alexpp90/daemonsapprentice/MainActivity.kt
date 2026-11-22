@@ -13,7 +13,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.alexpp90.daemonsapprentice.game.UiEvent
+import androidx.compose.foundation.clickable
 import io.github.alexpp90.daemonsapprentice.ui.ApprenticeTheme
+import io.github.alexpp90.daemonsapprentice.ui.EditorScreen
 import io.github.alexpp90.daemonsapprentice.ui.GameScreen
 import io.github.alexpp90.daemonsapprentice.ui.GameViewModel
 import io.github.alexpp90.daemonsapprentice.ui.ScreenActions
@@ -50,6 +52,7 @@ class MainActivity : ComponentActivity() {
             ApprenticeTheme {
                 val state by vm.state.collectAsStateWithLifecycle()
                 var menu by remember { mutableStateOf(false) }
+                var editor by remember { mutableStateOf<UiEvent.OpenEditor?>(null) }
                 LaunchedEffect(Unit) {
                     vm.events.collect { e ->
                         when (e) {
@@ -58,12 +61,26 @@ class MainActivity : ComponentActivity() {
                                 if (hook != null) { hook(); vm.filePickerClosed() }
                                 else try { picker.launch(arrayOf("*/*")) } catch (_: Exception) { vm.filePickerClosed() }
                             }
+                            is UiEvent.OpenEditor -> editor = e
                             UiEvent.OpenMenu -> menu = true
                             UiEvent.Quit -> finish()
                         }
                     }
                 }
-                GameScreen(state, actions, menu) { menu = it }
+                androidx.compose.foundation.layout.Box {
+                    GameScreen(state, actions, menu) { menu = it }
+                    // The editor lies over the terminal, which keeps its input and history meanwhile.
+                    editor?.let { e ->
+                        androidx.compose.foundation.layout.Box(
+                            androidx.compose.ui.Modifier.clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null,
+                            ) {},
+                        ) {
+                            EditorScreen(e.name, e.text) { text -> editor = null; vm.editorClosed(text) }
+                        }
+                    }
+                }
             }
         }
     }

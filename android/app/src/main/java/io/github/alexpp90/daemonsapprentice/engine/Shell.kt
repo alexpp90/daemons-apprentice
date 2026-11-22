@@ -18,10 +18,14 @@ interface Shell {
     suspend fun runQuiet(line: String): ShellResult = run(line)
     /** Ctrl-C: stops the command that is running. */
     fun interrupt()
+    /** Ctrl-C at the `>` prompt: the shell drops the unfinished command and shows its prompt again. */
+    suspend fun cancelInput(): ShellResult { interrupt(); return ShellResult("", 130, folder, interrupted = true) }
     /** Sends a line to the program that is running (it reads from the terminal). */
     fun sendInput(line: String)
     val folder: String
     val busy: Boolean
+    /** The game's own processes: the shell and the app. */
+    val ownPids: Set<Int> get() = emptySet()
     fun resize(rows: Int, cols: Int) {}
     fun close()
 }

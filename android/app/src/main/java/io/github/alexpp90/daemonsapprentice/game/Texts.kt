@@ -43,6 +43,7 @@ object HelpText {
           `cheat`    every command you have learned so far
           `menu`     levels and settings
           `skip`     skip this task
+          `edit file`  the game's editor (a phone has no nano)
         **The terminal's own help:**
           `ls --help`   most commands explain themselves with `--help`
           Ctrl-C        stops a command (on the key bar above the keyboard)
@@ -74,6 +75,13 @@ object KeyHelp {
         "\\" to ("a backslash" to "AltGr + ß"),
         ">" to ("the arrow" to "Shift + <"),
         "*" to ("the star" to "Shift + +"),
+        "$" to ("the dollar sign" to "Shift + 4"),
+        ";" to ("a semicolon" to "Shift + ,"),
+        "\"" to ("a double quote" to "Shift + 2"),
+        "(" to ("an opening parenthesis" to "Shift + 8"),
+        ")" to ("a closing parenthesis" to "Shift + 9"),
+        "%" to ("the percent sign" to "Shift + 5"),
+        "=" to ("the equals sign" to "Shift + 0"),
     )
 
     fun card(keys: List<String>): String = buildString {

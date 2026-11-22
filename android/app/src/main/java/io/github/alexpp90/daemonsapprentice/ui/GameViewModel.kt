@@ -46,7 +46,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
     fun submit(text: String) = viewModelScope.launch { engine.submit(text) }
     fun next() = viewModelScope.launch { engine.onContinue() }
-    fun interrupt() = engine.interrupt()
+    fun interrupt() { viewModelScope.launch { engine.interrupt() } }
+    fun editorClosed(text: String?) = viewModelScope.launch { engine.editorClosed(text) }
     fun complete(text: String) = engine.complete(text)
     fun jumpTo(level: Int) = viewModelScope.launch { engine.jumpTo(level) }
     fun showOptions(o: List<String>) = engine.showOptions(o)

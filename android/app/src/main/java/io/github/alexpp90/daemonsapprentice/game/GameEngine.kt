@@ -32,6 +32,8 @@ enum class Wait {
     More,
     /** A command is running: Ctrl-C stops it; typed lines go to it. */
     Busy,
+    /** The game's editor is open (`edit file`). */
+    Editing,
     /** The level (in the slice: the game) is finished. */
     Done,
     Starting,
@@ -64,6 +66,8 @@ data class LevelInfo(val number: Int, val title: String, val done: Boolean, val 
 
 sealed interface UiEvent {
     data object OpenFilePicker : UiEvent
+    /** `edit file`: the editor screen, with the file's text; it answers with [GameEngine.editorClosed]. */
+    data class OpenEditor(val path: String, val name: String, val text: String) : UiEvent
     data object OpenMenu : UiEvent
     data object Quit : UiEvent
 }
@@ -80,7 +84,7 @@ class GameEngine(
     val events: SharedFlow<UiEvent> = _events
 
     private val save = SaveFile(dirs.save)
-    private val guard = Guard(dirs.game.absolutePath, dirs.save.absolutePath)
+    private val guard = Guard(dirs.game.absolutePath, dirs.save.absolutePath) { shell.ownPids }
     private var nextId = 1L
     private var pages = ArrayDeque<List<Line>>()
     private var afterPages: (suspend () -> Unit)? = null
@@ -90,6 +94,8 @@ class GameEngine(
     private var misses = 0
     private var moreLines = mutableListOf<String>()
     private var pickerOpen = false
+    private class EditTarget(val file: File, val name: String, val line: String)
+    private var editing: EditTarget? = null
 
     private val level get() = levels[levelIndex]
     private val task get() = level.tasks[taskIndex]
@@ -190,7 +196,7 @@ class GameEngine(
     }
 
     private fun chipsFor(t: Task): List<String> {
-        val all = t.chips + t.decoys
+        val all = (t.solve?.let { ChipWords.split(it(dirs)).distinct() } ?: t.chips) + t.decoys
         return if (t.decoys.isEmpty()) all else all.shuffled(random)
     }
 
@@ -285,14 +291,27 @@ class GameEngine(
         if (raw.isBlank() && w == Wait.Prompt) return
         val n = Normalizer.normalize(raw)
         val line = n.line
-        if (w == Wait.More) { continueCommand(raw); return }
+        if (w == Wait.More) {
+            // The guard looks at the whole command, not only at its last line.
+            val v = guard.check((moreLines + raw).joinToString("\n"), shell.folder, dirs.home.absolutePath, task.allowSave)
+            if (!v.allowed) {
+                append(Line.Command(id(), raw, continuation = true), text("The game stopped this one: ${v.reason}", Line.Kind.Warn))
+                moreLines = mutableListOf()
+                setWait(Wait.Busy)
+                shell.cancelInput()
+                setWait(Wait.Prompt)
+                return
+            }
+            continueCommand(raw); return
+        }
         append(Line.Command(id(), line))
         if (n.changes.isNotEmpty())
             append(text("Your keyboard changed something; fixed: ${n.changes.joinToString("; ")}.", Line.Kind.Note))
         val first = line.substringBefore(' ')
+        if (first == "edit" && line.trim() != first) { openEditor(line.trim().removePrefix("edit").trim(), line); return }
         if (first in GAME_COMMANDS && line.trim() == first) { gameCommand(first); return }
         if (first == "exit" || first == "logout") { gameCommand("quit"); return }
-        val verdict = guard.check(line, shell.folder, dirs.home.absolutePath)
+        val verdict = guard.check(line, shell.folder, dirs.home.absolutePath, task.allowSave)
         if (!verdict.allowed) {
             append(text("The game stopped this one: ${verdict.reason}", Line.Kind.Warn))
             return
@@ -324,12 +343,14 @@ class GameEngine(
             })
         }
         if (r.needsMore) {
-            append(text("The shell waits for the rest of the command (that is its `>` prompt). Type the rest, or Ctrl-C to start over.", Line.Kind.Note))
+            if (!continuation) append(text("The shell waits for the rest of the command (that is its `>` prompt). Type the rest, or Ctrl-C to start over.", Line.Kind.Note))
             setWait(Wait.More)
             return
         }
         val full = moreLines.joinToString("\n")
         moreLines = mutableListOf()
+        // A task that lets the player write the save file: the game reads it again (and believes it).
+        if (task.allowSave && full.contains(".apprentice-save")) save.load()
         val attempt = Attempt(
             line = full, commands = guard.commands(full), words = guard.words(full),
             output = finalText, status = r.status, folder = r.folder, interrupted = r.interrupted,
@@ -365,7 +386,7 @@ class GameEngine(
                 when (hintLevel) {
                     1 -> append(text(task.hint1, Line.Kind.Note))
                     2 -> append(text(task.hint2, Line.Kind.Note))
-                    else -> append(text("The solution: `${task.solution}`\n${task.solutionWhy}\nType it rather than copying it: your fingers learn, too.", Line.Kind.Note))
+                    else -> append(text("The solution: `${task.solutionNow(dirs)}`\n${task.solutionWhy}\nType it rather than copying it: your fingers learn, too.", Line.Kind.Note))
                 }
                 _state.update { it.copy(showChips = true, hinted = true) }
             }
@@ -387,6 +408,7 @@ class GameEngine(
             "menu" -> _events.tryEmit(UiEvent.OpenMenu)
             "quit" -> { store(); _events.tryEmit(UiEvent.Quit) }
             "clear" -> clear()
+            "edit" -> append(text("`edit` opens one file in the game's editor: `edit note.txt`.", Line.Kind.Note))
             "files" -> {
                 pickerOpen = true
                 _events.tryEmit(UiEvent.OpenFilePicker)
@@ -405,15 +427,55 @@ class GameEngine(
         else append(text("Back from the file picker.", Line.Kind.Note))
     }
 
-    fun interrupt() {
+    suspend fun interrupt() {
         when (_state.value.wait) {
             Wait.Busy -> shell.interrupt()
             Wait.More -> {
-                moreLines.clear()
-                shell.interrupt()
+                // Ctrl-C at the `>` prompt: the shell forgets the unfinished command.
+                val partial = moreLines.joinToString("\n")
+                moreLines = mutableListOf()
+                setWait(Wait.Busy)
+                val r = shell.cancelInput()
+                evaluate(Attempt(
+                    line = partial, commands = guard.commands(partial), words = guard.words(partial),
+                    output = "", status = 130, folder = r.folder, interrupted = true, pg = dirs.playground, home = dirs.home,
+                ))
             }
             else -> {}
         }
+    }
+
+    // ------------------------------------------------------------- editor
+
+    /** `edit file`: opens the game's editor (a phone has no nano). Only files in the player's home. */
+    private fun openEditor(arg: String, line: String) {
+        val home = dirs.home.absolutePath
+        val path = guard.resolve(arg, shell.folder.ifEmpty { dirs.playground.absolutePath }, home)
+        val f = File(path)
+        val problem = when {
+            arg.contains(' ') -> "`edit` opens one file at a time: `edit note.txt`."
+            !path.startsWith("$home/") -> "The editor opens files in your home folder and below: that is your app's room."
+            f.absolutePath == dirs.save.absolutePath -> "That is your save file. Look at it with `cat`; the editor leaves it alone."
+            f.isDirectory -> "`$arg` is a folder. The editor opens files."
+            else -> null
+        }
+        if (problem != null) { append(text(problem, Line.Kind.Note)); setWait(Wait.Prompt); return }
+        editing = EditTarget(f, arg, line)
+        setWait(Wait.Editing)
+        _events.tryEmit(UiEvent.OpenEditor(f.absolutePath, arg, if (f.isFile) f.readText() else ""))
+    }
+
+    /** The editor closed: [text] is saved (null: nothing to save), then the task looks at the file. */
+    suspend fun editorClosed(text: String?) {
+        val e = editing ?: return
+        editing = null
+        if (text != null) { e.file.parentFile?.mkdirs(); e.file.writeText(text) }
+        append(text(if (text != null) "Saved `${e.name}`." else "Closed `${e.name}`.", Line.Kind.Note))
+        setWait(Wait.Prompt)
+        evaluate(Attempt(
+            line = e.line, commands = listOf("edit"), words = guard.words(e.line), output = "", status = 0,
+            folder = shell.folder, gameCommand = "edit", pg = dirs.playground, home = dirs.home,
+        ))
     }
 
     private fun cheatsheet(): String {
@@ -423,7 +485,8 @@ class GameEngine(
             lv.tasks.take(upTo).map { "  `${it.solution}`   ${it.title}" }
         }
         val flags = saved("flags")
-        val flagLine = if (flags.isEmpty()) "" else "\n**Flags found:** ${flags.size}"
+        val flagLine = (if (flags.isEmpty()) "" else "\n**Flags found:** ${flags.size}") +
+            (save["badge"]?.let { "\n**Badge:** $it" } ?: "")
         return if (entries.isEmpty()) "Your cheatsheet is still empty. Solve a task and its command lands here."
         else "**Your cheatsheet**\n" + entries.joinToString("\n") + flagLine
     }
@@ -468,11 +531,11 @@ class GameEngine(
     }
 
     companion object {
-        val GAME_COMMANDS = listOf("help", "hint", "explain", "task", "keys", "cheat", "skip", "menu", "quit", "clear", "files")
+        val GAME_COMMANDS = listOf("help", "hint", "explain", "task", "keys", "cheat", "skip", "menu", "quit", "clear", "files", "edit")
         val COMMON_COMMANDS = listOf(
             "echo", "ls", "pwd", "cat", "grep", "cd", "date", "whoami", "mkdir", "touch", "cp", "mv", "rm",
             "head", "tail", "wc", "sort", "uniq", "ps", "kill", "id", "uname", "getprop", "sleep", "history",
-            "clear", "rmdir",
+            "clear", "rmdir", "nproc", "free", "df", "base64", "env", "which", "chmod", "seq", "sh",
         )
     }
 }

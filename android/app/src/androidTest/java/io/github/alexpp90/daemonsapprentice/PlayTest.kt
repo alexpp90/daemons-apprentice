@@ -12,7 +12,11 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.alexpp90.daemonsapprentice.engine.Guard
+import io.github.alexpp90.daemonsapprentice.game.ChipWords
+import io.github.alexpp90.daemonsapprentice.game.GameDirs
 import io.github.alexpp90.daemonsapprentice.game.Levels
+import io.github.alexpp90.daemonsapprentice.game.solutionNow
+import androidx.compose.ui.test.performTextInput
 import io.github.alexpp90.daemonsapprentice.game.Task
 import org.junit.After
 import org.junit.Assert.assertTrue
@@ -37,6 +41,9 @@ class PlayTest {
     private val guard = Guard("/g", "/s")
     private val tasks: List<Task> = Levels.all.flatMap { it.tasks }
     private val lastLevel = Levels.all.last().number
+    private val dirs by lazy { GameDirs(ctx.filesDir) }
+    /** Editor tasks: the text the player adds at the end of the file. */
+    private fun appended(t: Task) = t.drive?.takeIf { it.startsWith("edit-append:") }?.removePrefix("edit-append:")
 
     /** Runs a shell command as the test and waits until it has finished. */
     private fun shell(cmd: String): String =
@@ -140,8 +147,9 @@ class PlayTest {
         freshStart()
         for ((i, t) in tasks.withIndex()) {
             step = "touch-${t.id}"
-            val words = guard.words(t.solution)
-            val firstChip = "chip:" + words.first()
+            val d = t.drive ?: ""
+            val lines = if (d == "lines") t.solution.lines() else listOf("")
+            val firstChip = "chip:" + ChipWords.split(if (d == "lines") lines[0] else t.solution).first()
             // Next until the prompt; from Level 2 on, a player taps `hint` to get the pieces.
             waitFor(if (i == 0) 40_000 else 15_000) { exists("next") || exists("prompt-ready") }
             // Ready means: the prompt, and no Next left on the screen (a busy emulator may still
@@ -154,15 +162,24 @@ class PlayTest {
                 tap("hint")
                 waitFor { exists(firstChip) }
             }
-            for (w in words) { waitFor { exists("chip:$w") }; tap("chip:$w") }
-            waitFor { exists("run") }
-            tap("run")
-            if (t.drive == "ctrlc") {
-                waitFor { exists("prompt-busy") }
-                Thread.sleep(500)
-                tap("key:Ctrl-C")
+            // The live solution (a PID) is read only now, after the task has set things up.
+            val all = if (d == "lines") lines else listOf(t.solutionNow(dirs))
+            for ((n, line) in all.withIndex()) {
+                for (w in ChipWords.split(line)) { waitFor { exists("chip:$w") }; tap("chip:$w") }
+                waitFor { exists("run") }
+                tap("run")
+                if (n < all.lastIndex) waitFor { exists("prompt-more") }
             }
-            waitFor(if (t.drive == "ctrlc") 20_000 else 15_000) { exists("next") }
+            when {
+                d == "ctrlc" -> { waitFor { exists("prompt-busy") }; Thread.sleep(500); tap("key:Ctrl-C") }
+                d == "more-ctrlc" -> { waitFor { exists("prompt-more") }; Thread.sleep(500); tap("key:Ctrl-C") }
+                appended(t) != null -> {
+                    waitFor { exists("editor-text") }
+                    rule.onNodeWithTag("editor-text").performTextInput(appended(t)!!)
+                    tap("editor-done")
+                }
+            }
+            waitFor(if (d == "ctrlc") 20_000 else 60_000) { exists("next") }
             if (shots) snap("touch-${t.id}")
         }
         while (!finished) {
@@ -255,6 +272,23 @@ class PlayTest {
                     check(now.startsWith(t.solution), "Tab gave '$now' in ${t.id}")
                     enter()
                 }
+                d == "more-ctrlc" -> {
+                    type(t.solution); enter()
+                    waitFor { exists("prompt-more") }
+                    Thread.sleep(500)
+                    key(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON)
+                }
+                d == "lines" -> t.solution.lines().forEachIndexed { n, line ->
+                    type(line); enter()
+                    if (n < t.solution.lines().lastIndex) waitFor { exists("prompt-more") }
+                }
+                appended(t) != null -> {
+                    type(t.solution); enter()
+                    waitFor { exists("editor-text") }
+                    Thread.sleep(500)
+                    type(appended(t)!!)
+                    key(KeyEvent.KEYCODE_ESCAPE)
+                }
                 d == "up-fix" -> { // ↑ brings back "ehco hello"; fix it with the arrows
                     key(KeyEvent.KEYCODE_DPAD_UP); instr.waitForIdleSync()
                     check(inputText() == "ehco hello", "Up gave '${inputText()}' in ${t.id}")
@@ -270,9 +304,9 @@ class PlayTest {
                     repeat(23) { key(KeyEvent.KEYCODE_DEL) }
                     type(t.solution); enter()
                 }
-                else -> { type(t.solution); enter() }
+                else -> { type(t.solutionNow(dirs)); enter() }
             }
-            waitFor(if (d == "ctrlc") 20_000 else 15_000) { exists("next") }
+            waitFor(if (d == "ctrlc") 20_000 else 60_000) { exists("next") }
             // `-e shots 1`: keep a screenshot of every solved task (for the owner's review).
             if (shots) { Thread.sleep(800); snap("keys-${t.id}") }
         }

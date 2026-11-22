@@ -8,7 +8,10 @@ import io.github.alexpp90.daemonsapprentice.game.GameEngine
 import io.github.alexpp90.daemonsapprentice.game.Line
 import io.github.alexpp90.daemonsapprentice.game.Level0
 import io.github.alexpp90.daemonsapprentice.game.Levels
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
+import kotlin.concurrent.thread
+import io.github.alexpp90.daemonsapprentice.game.solutionNow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import io.github.alexpp90.daemonsapprentice.game.Wait
@@ -21,37 +24,87 @@ import java.nio.file.Files
 import kotlin.random.Random
 
 /**
- * A stand-in for the phone's shell on the computer: bash (the computer's `sh` may know no
- * `{a,b}` braces), the folder carried over, HOME set to the game's home, Ctrl-C by stopping it.
+ * A stand-in for the phone's shell on the computer: one interactive bash for the whole game, like
+ * the phone's one mksh, so variables, `$?`, the `>` prompt and background processes behave the
+ * same. English messages (LC_ALL=C), HOME set to the game's home, and a fake `getprop` (an
+ * Android command). Ctrl-C is SIGINT to the running command, or to bash at its `>` prompt.
  */
-class HostShell(start: File, private val home: File = start) : Shell {
-    override var folder: String = start.absolutePath
+class HostShell(start: File, home: File = start) : Shell {
+    @Volatile override var folder: String = start.absolutePath
     @Volatile override var busy = false
-    @Volatile private var proc: Process? = null
-    @Volatile private var stopped = false
-    override suspend fun run(line: String, onOutput: (String) -> Unit): ShellResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        val script = "cd '$folder' || exit 1\n$line\nprintf '\\036%d;%s\\037' \"\$?\" \"\$PWD\""
-        val pb = ProcessBuilder("bash", "-c", script).redirectErrorStream(true)
-        pb.environment()["HOME"] = home.absolutePath
-        stopped = false; busy = true
-        val p = pb.start(); proc = p
-        val text = p.inputStream.bufferedReader().readText()
-        p.waitFor(); busy = false
-        if (stopped) return@withContext ShellResult(text, 130, folder, interrupted = true)
-        var out = ""; var status = 0
-        MarkerParser { e ->
-            when (e) {
-                is MarkerParser.Event.Output -> out += e.text
-                is MarkerParser.Event.Prompt -> { status = e.status; folder = e.folder }
-                else -> {}
+    private val lock = Object()
+    private var pending: CompletableDeferred<ShellResult>? = null
+    private val buf = StringBuilder()
+    private var interrupted = false
+    private val proc: Process
+    private val bashPid: Long
+    private val parser = MarkerParser { ev ->
+        synchronized(lock) {
+            when (ev) {
+                is MarkerParser.Event.Output -> buf.append(ev.text)
+                is MarkerParser.Event.Prompt -> { folder = ev.folder.ifEmpty { folder }; finish(ShellResult(buf.toString(), ev.status, folder, false, interrupted)) }
+                MarkerParser.Event.MoreInput -> finish(ShellResult(buf.toString(), 0, folder, true, interrupted))
             }
-        }.feed(text)
-        onOutput(out)
-        ShellResult(out, status, folder)
+        }
     }
-    override fun interrupt() { stopped = true; proc?.destroy() }
-    override fun sendInput(line: String) {}
-    override fun close() {}
+
+    private fun finish(r: ShellResult) {
+        buf.setLength(0); interrupted = false; busy = false
+        val p = pending; pending = null; p?.complete(r)
+    }
+
+    init {
+        val bin = Files.createTempDirectory("fakebin").toFile()
+        File(bin, "getprop").apply {
+            writeText("#!/bin/sh\ncase \"$1\" in ro.build.version.release) echo 17;; ro.product.model) echo Host computer;; *) echo;; esac\n")
+            setExecutable(true)
+        }
+        val pb = ProcessBuilder("bash", "--norc", "--noprofile", "--noediting", "-i").redirectErrorStream(true).directory(start)
+        pb.environment()["HOME"] = home.absolutePath
+        pb.environment()["LC_ALL"] = "C"
+        pb.environment()["PATH"] = bin.absolutePath + ":" + System.getenv("PATH")
+        proc = pb.start()
+        thread(isDaemon = true) {
+            val r = proc.inputStream.reader()
+            val chars = CharArray(4096)
+            while (true) { val n = r.read(chars); if (n <= 0) break; parser.feed(String(chars, 0, n)) }
+        }
+        val first = CompletableDeferred<ShellResult>()
+        synchronized(lock) { pending = first; busy = true }
+        val pidFile = File(bin, "bash.pid")
+        write("echo \$\$ > '${pidFile.absolutePath}'; set +H; PS1=$'\\036$?;\$PWD\\037'; PS2=$'\\035'; cd '${start.absolutePath}'\n")
+        runBlocking { withTimeout(10_000) { first.await() } }
+        bashPid = pidFile.readText().trim().toLong()
+    }
+
+    private fun write(s: String) { proc.outputStream.write(s.toByteArray()); proc.outputStream.flush() }
+
+    override suspend fun run(line: String, onOutput: (String) -> Unit): ShellResult {
+        val d = CompletableDeferred<ShellResult>()
+        synchronized(lock) { pending = d; busy = true }
+        write(line + "\n")
+        val r = withTimeout(60_000) { d.await() }
+        onOutput(r.output)
+        return r
+    }
+
+    private fun signal(vararg args: String) { ProcessBuilder(*args).start().waitFor() }
+
+    override fun interrupt() {
+        synchronized(lock) { interrupted = true }
+        signal("pkill", "-INT", "-P", bashPid.toString())
+    }
+
+    override suspend fun cancelInput(): ShellResult {
+        val d = CompletableDeferred<ShellResult>()
+        synchronized(lock) { pending = d; busy = true; interrupted = true }
+        signal("kill", "-INT", bashPid.toString())
+        return withTimeout(5_000) { d.await() }
+    }
+
+    override val ownPids: Set<Int> get() = setOf(bashPid.toInt())
+    override fun sendInput(line: String) = write(line + "\n")
+    override fun close() { proc.destroy() }
 }
 
 class EnginePlaythroughTest {
@@ -80,14 +133,28 @@ class EnginePlaythroughTest {
             g.continueToPrompt()
             assertEquals("${t.id}: prompt", Wait.Prompt, g.state.value.wait)
             assertEquals("${t.id}", t.title, g.state.value.taskTitle)
-            when (t.drive) {
-                "device" -> { g.submit("skip"); continue }
-                "ctrlc" -> {
-                    val job = launch { g.submit(t.solution) }
+            val d = t.drive ?: ""
+            val solution = t.solutionNow(GameDirs(root))
+            when {
+                d == "device" -> { g.submit("skip"); continue }
+                d == "ctrlc" -> {
+                    val job = launch { g.submit(solution) }
                     withTimeout(5000) { while (g.state.value.wait != Wait.Busy) delay(20) }
                     delay(300); g.interrupt(); job.join()
                 }
-                else -> g.submit(t.solution)
+                d == "more-ctrlc" -> {
+                    g.submit(solution)
+                    assertEquals("${t.id}: the > prompt", Wait.More, g.state.value.wait)
+                    g.interrupt()
+                }
+                d == "lines" -> solution.lines().forEach { g.submit(it) }
+                d.startsWith("edit-append:") -> {
+                    g.submit(solution)
+                    assertEquals("${t.id}: editor", Wait.Editing, g.state.value.wait)
+                    val f = File(GameDirs(root).playground, "scripts/" + solution.substringAfter(' '))
+                    g.editorClosed(f.readText() + d.removePrefix("edit-append:") + "\n")
+                }
+                else -> g.submit(solution)
             }
             if (t.gameCommand == "files") g.filePickerClosed()
             assertEquals("${t.id}: not solved by '${t.solution}': ${g.state.value.transcript.takeLast(3)}", Wait.Continue, g.state.value.wait)
@@ -95,7 +162,8 @@ class EnginePlaythroughTest {
         g.continueToPrompt()
         assertEquals(Wait.Done, g.state.value.wait)
         val save = root.resolve("home/.apprentice-save").readText()
-        assertTrue(save, save.contains("done=0,1,2,3,4"))
+        assertTrue(save, save.contains("done=" + Levels.all.joinToString(",") { it.number.toString() }))
+        assertTrue(save, save.contains("badge=gold"))
         assertTrue(save, save.contains("flags=hidden_in_plain_sight"))
         root.deleteRecursively()
     }

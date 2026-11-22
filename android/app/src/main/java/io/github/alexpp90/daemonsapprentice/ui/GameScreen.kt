@@ -97,6 +97,7 @@ fun GameScreen(state: GameState, actions: ScreenActions, showMenu: Boolean, onMe
     // it stays hidden unless the player chose "show on-screen keyboard" in the system settings.
     LaunchedEffect(state.wait, input) {
         val i = input ?: return@LaunchedEffect
+        if (state.wait == Wait.Editing) return@LaunchedEffect // the editor has the keyboard
         i.requestFocus()
         if (state.wait == Wait.Prompt || state.wait == Wait.More) i.showKeyboard()
     }
@@ -285,7 +286,7 @@ private fun Bottom(
             if (state.wait == Wait.Busy || state.wait == Wait.More)
                 SmallKey("Ctrl-C", hot = true) { actions.interrupt() }
         }
-        val chipsVisible = state.chips.isNotEmpty() && (state.wait == Wait.Prompt) &&
+        val chipsVisible = state.chips.isNotEmpty() && (state.wait == Wait.Prompt || state.wait == Wait.More) &&
             ((state.showChips && !hardwareMode) || state.hinted)
         if (chipsVisible) FlowRow(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),

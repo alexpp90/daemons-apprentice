@@ -6,9 +6,16 @@ package io.github.alexpp90.daemonsapprentice.engine
  * itself (its own files, its shell), with an explanation. It errs on the
  * side of blocking.
  */
-class Guard(private val gameDir: String, private val saveFile: String) {
+class Guard(
+    private val gameDir: String,
+    private val saveFile: String,
+    /** The game's own processes (its shell, the app): `kill` may not aim at them. */
+    private val protectedPids: () -> Set<Int> = { emptySet() },
+) {
 
     private companion object {
+        val KEYWORDS = setOf("do", "then", "else", "elif", "if", "while", "until", "!", "{")
+        val ENDS = setOf("done", "fi", "}")
         val WRITERS = setOf("rm", "rmdir", "mv", "cp", "chmod", "touch", "mkdir", "ln", "tee", "sed", "dd", "truncate", "tar", "gzip", "unzip")
     }
 
@@ -27,6 +34,7 @@ class Guard(private val gameDir: String, private val saveFile: String) {
                 quote != null -> if (c == quote) quote = null else cur.append(c)
                 c == '\'' || c == '"' -> quote = c
                 c == '\\' && i + 1 < line.length -> { cur.append(line[i + 1]); i++ }
+                c == '\n' -> { push(); out += ";" }
                 c.isWhitespace() -> push()
                 c in ";|&<>()" -> { push(); out += c.toString() }
                 else -> cur.append(c)
@@ -47,6 +55,8 @@ class Guard(private val gameDir: String, private val saveFile: String) {
             if (x == "<" || x == ">") continue
             if (expect) {
                 if (x.contains('=') && !x.startsWith("=")) continue // planet=Mars before a command
+                if (x in KEYWORDS) continue // `do`, `then`: the next word is the command
+                if (x in ENDS) continue
                 out += x
                 expect = false
             }
@@ -75,12 +85,20 @@ class Guard(private val gameDir: String, private val saveFile: String) {
         for (c in cmds) {
             when (c) {
                 "exec" -> return Verdict(false, "`exec` would replace the game's shell with another program, and the game would lose its terminal.")
+                "pkill", "killall" -> return Verdict(false, "`$c` stops processes by name, and could hit the game's own shell. In this game, stop a process with `kill` and its PID.")
                 "trap", "ulimit" -> return Verdict(false, "`$c` would change the game's own shell. The game needs it as it is.")
                 "set" -> if (Regex("""\bset\s+-[a-z]*e""").containsMatchIn(line))
                     return Verdict(false, "`set -e` would make the game's shell quit at the first error.")
             }
         }
         val w = words(line)
+        if ("kill" in cmds) {
+            val args = w.dropWhile { it != "kill" }.drop(1).takeWhile { it !in setOf(";", "|", "&", ")") }
+            val targets = if (args.size > 1 && args[0].startsWith("-")) args.drop(1) else args
+            val own = protectedPids()
+            if (targets.any { t -> t == "\$\$" || t == "\$PPID" || t.toIntOrNull()?.let { it <= 0 || it in own } == true })
+                return Verdict(false, "That PID is the game itself (its shell or the app). Stopping it would end the game. Pick another number from `ps`.")
+        }
         val pathWords = w.filter { it !in setOf(";", "|", "&", "(", ")", "<", ">") && !it.startsWith("-") }
         val paths = pathWords.map { resolve(it, folder, home) }
         // A glob could match the game's folder if the folder's path starts with what comes before the wildcard.
