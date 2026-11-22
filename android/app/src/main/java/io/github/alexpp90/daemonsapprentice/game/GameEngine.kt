@@ -56,7 +56,11 @@ data class GameState(
     val hinted: Boolean = false,
     val keys: List<String> = emptyList(),
     val folder: String = "",
+    val levels: List<LevelInfo> = emptyList(),
 )
+
+/** A level as the menu shows it. */
+data class LevelInfo(val number: Int, val title: String, val done: Boolean, val current: Boolean)
 
 sealed interface UiEvent {
     data object OpenFilePicker : UiEvent
@@ -67,7 +71,7 @@ sealed interface UiEvent {
 class GameEngine(
     private val dirs: GameDirs,
     private val shell: Shell,
-    private val levels: List<Level> = listOf(Level0.level),
+    private val levels: List<Level> = Levels.all,
     private val random: Random = Random.Default,
 ) {
     private val _state = MutableStateFlow(GameState())
@@ -99,20 +103,45 @@ class GameEngine(
 
     // ----------------------------------------------------------------- flow
 
+    private fun saved(key: String) = save[key]?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
+    private fun addTo(key: String, v: String) { save[key] = (saved(key) + v).distinct().joinToString(",") }
+    private fun isDone(l: Level) = l.number.toString() in saved("done")
+
     suspend fun start() {
         save.load()
+        // A save file from the first slice said intro=seen for Level 0.
+        if (save["intro"] == "seen") save["intro"] = "0"
         levelIndex = levels.indexOfFirst { it.number == save.int("level", 0) }.coerceAtLeast(0)
         taskIndex = save.int("task", 0).coerceIn(0, level.tasks.size - 1)
-        if (save["done"]?.split(',')?.contains(level.number.toString()) == true) {
-            levelComplete(); return
-        }
-        if (save["intro"] != "seen" && taskIndex == 0 && levelIndex == 0) {
+        if (isDone(level) && taskIndex == level.tasks.lastIndex) { levelComplete(); return }
+        enterLevel()
+    }
+
+    /** The level's intro (once), then its current task. */
+    private suspend fun enterLevel() {
+        publishLevels()
+        if (level.number.toString() !in saved("intro") && taskIndex == 0) {
             updateTaskHeader()
+            clear()
             showPages(level.intro.map { introPage(it) }) {
-                save["intro"] = "seen"; store()
+                addTo("intro", level.number.toString()); store()
                 beginTask()
             }
         } else beginTask()
+    }
+
+    private fun publishLevels() {
+        val infos = levels.map { LevelInfo(it.number, it.title, isDone(it), it == level) }
+        _state.update { it.copy(levels = infos) }
+    }
+
+    /** Menu: play this level (from its first task; its intro only once). */
+    suspend fun jumpTo(number: Int) {
+        val i = levels.indexOfFirst { it.number == number }
+        if (i < 0 || _state.value.wait == Wait.Busy) return
+        levelIndex = i; taskIndex = 0
+        store()
+        enterLevel()
     }
 
     /** A page of Pid1's: its ASCII art as art, the words as text. */
@@ -179,14 +208,23 @@ class GameEngine(
         }
         val all = listOfNotNull(t.card?.let { listOf<Line>(text(it, Line.Kind.Card)) }) + chunkPages
         // No Next after the last chunk: the prompt follows directly.
+        val newKeys = t.keys.filter { it in KeyHelp.where && it !in explainedKeys }
+        explainedKeys += newKeys
         showPages(all.dropLast(1)) {
             append(*all.last().toTypedArray())
+            if (newKeys.isNotEmpty()) append(text(KeyHelp.card(newKeys), Line.Kind.Help))
             setWait(Wait.Prompt)
         }
     }
 
+    private val explainedKeys = mutableSetOf<String>()
+
     private suspend fun solved() {
         append(text(Praise.next(random), Line.Kind.Pid1), text(task.fact, Line.Kind.Fact))
+        task.flag?.let { f ->
+            addTo("flags", f)
+            append(text("${Pid1.CHEER}  Flag found! You have ${saved("flags").size}. They are in your cheatsheet.", Line.Kind.Pid1))
+        }
         val last = taskIndex == level.tasks.lastIndex
         if (!last) { taskIndex++; store() } else store()
         _state.update { it.copy(showChips = level.number <= 1) }
@@ -200,23 +238,32 @@ class GameEngine(
         val p = level.outro.map { listOf<Line>(text(it)) } +
             listOf(listOf(text("**Explore on your phone**", Line.Kind.Title)) + level.explore.map { text(it, Line.Kind.Note) })
         showPages(p) {
-            val done = (save["done"]?.split(',')?.filter { it.isNotBlank() } ?: emptyList()) + level.number.toString()
-            save["done"] = done.distinct().joinToString(",")
+            addTo("done", level.number.toString())
             store()
             levelComplete()
         }
     }
 
-    private fun levelComplete() {
+    private suspend fun levelComplete() {
         clear()
+        publishLevels()
         val art = Pid1.levelDone[level.number % Pid1.levelDone.size].joinToString("\n")
-        append(
-            Line.Art(id(), art),
-            text("**Level ${level.number} complete: ${level.title}!**", Line.Kind.Title),
-            text("Level 1, \"Talking to the Shell\", comes with the next build of this app. Your progress is saved.", Line.Kind.Note),
-        )
+        append(Line.Art(id(), art), text("**Level ${level.number} complete: ${level.title}!**", Line.Kind.Title))
         _state.update { it.copy(task = it.taskCount, pinned = "**Level ${level.number} complete**", chips = emptyList(), showChips = false) }
-        setWait(Wait.Done)
+        val next = levels.getOrNull(levelIndex + 1)
+        if (next == null) {
+            append(text("Level ${level.number + 1} comes with the next build of this app. Your progress is saved.", Line.Kind.Note))
+            setWait(Wait.Done)
+            return
+        }
+        append(text("Next: **Level ${next.number}, ${next.title}.**", Line.Kind.Note))
+        setWait(Wait.Continue)
+        pages = ArrayDeque()
+        afterPages = {
+            levelIndex++; taskIndex = 0
+            store()
+            enterLevel()
+        }
     }
 
     // ------------------------------------------------------------- commands
@@ -286,6 +333,7 @@ class GameEngine(
         val attempt = Attempt(
             line = full, commands = guard.commands(full), words = guard.words(full),
             output = finalText, status = r.status, folder = r.folder, interrupted = r.interrupted,
+            pg = dirs.playground, home = dirs.home,
         )
         evaluate(attempt)
     }
@@ -311,10 +359,7 @@ class GameEngine(
 
     private suspend fun gameCommand(c: String) {
         when (c) {
-            "help" -> {
-                append(text(HelpText.help, Line.Kind.Help))
-                if (task.gameCommand == "help" && _state.value.wait == Wait.Prompt) { solved(); return }
-            }
+            "help" -> append(text(HelpText.help, Line.Kind.Help))
             "hint" -> {
                 hintLevel++
                 when (hintLevel) {
@@ -348,6 +393,7 @@ class GameEngine(
                 return
             }
         }
+        if (task.gameCommand == c && _state.value.wait == Wait.Prompt) { solved(); return }
         if (_state.value.wait != Wait.Continue) setWait(Wait.Prompt)
     }
 
@@ -376,8 +422,10 @@ class GameEngine(
             val upTo = if (lv.number.toString() in done) lv.tasks.size else if (lv == level) taskIndex else 0
             lv.tasks.take(upTo).map { "  `${it.solution}`   ${it.title}" }
         }
+        val flags = saved("flags")
+        val flagLine = if (flags.isEmpty()) "" else "\n**Flags found:** ${flags.size}"
         return if (entries.isEmpty()) "Your cheatsheet is still empty. Solve a task and its command lands here."
-        else "**Your cheatsheet**\n" + entries.joinToString("\n")
+        else "**Your cheatsheet**\n" + entries.joinToString("\n") + flagLine
     }
 
     // ------------------------------------------------------------- Tab
@@ -424,6 +472,7 @@ class GameEngine(
         val COMMON_COMMANDS = listOf(
             "echo", "ls", "pwd", "cat", "grep", "cd", "date", "whoami", "mkdir", "touch", "cp", "mv", "rm",
             "head", "tail", "wc", "sort", "uniq", "ps", "kill", "id", "uname", "getprop", "sleep", "history",
+            "clear", "rmdir",
         )
     }
 }

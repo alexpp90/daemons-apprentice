@@ -48,6 +48,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     fun next() = viewModelScope.launch { engine.onContinue() }
     fun interrupt() = engine.interrupt()
     fun complete(text: String) = engine.complete(text)
+    fun jumpTo(level: Int) = viewModelScope.launch { engine.jumpTo(level) }
     fun showOptions(o: List<String>) = engine.showOptions(o)
     fun filePickerClosed() = viewModelScope.launch { engine.filePickerClosed() }
     fun resize(rows: Int, cols: Int) = shell.resize(rows, cols)

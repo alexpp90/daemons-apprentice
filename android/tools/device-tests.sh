@@ -19,6 +19,7 @@ $ADB shell wm dismiss-keyguard >/dev/null 2>&1
 $ADB shell svc power stayon true >/dev/null 2>&1
 # A cold emulator's own launcher often "isn't responding" for a while; its dialog would cover the game.
 $ADB shell settings put global hide_error_dialogs 1 >/dev/null 2>&1
+$ADB shell run-as io.github.alexpp90.daemonsapprentice rm -rf cache/shots >/dev/null 2>&1
 ARGS=""; [ -n "$ONLY" ] && ARGS="-e class io.github.alexpp90.daemonsapprentice.$ONLY"
 START=$(date +%s)
 OUT=$($ADB shell am instrument -w -r $ARGS io.github.alexpp90.daemonsapprentice.test/androidx.test.runner.AndroidJUnitRunner)

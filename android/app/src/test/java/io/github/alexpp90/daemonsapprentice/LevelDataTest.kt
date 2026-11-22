@@ -2,13 +2,13 @@ package io.github.alexpp90.daemonsapprentice
 
 import io.github.alexpp90.daemonsapprentice.engine.Guard
 import io.github.alexpp90.daemonsapprentice.game.GameEngine
-import io.github.alexpp90.daemonsapprentice.game.Level0
+import io.github.alexpp90.daemonsapprentice.game.Levels
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Rules every task must follow (REQUIREMENTS R3, R4, R5, R28). */
 class LevelDataTest {
-    private val levels = listOf(Level0.level)
+    private val levels = Levels.all
     private val guard = Guard("/game", "/save")
 
     @Test fun everyTaskIsComplete() {
@@ -21,9 +21,9 @@ class LevelDataTest {
         assertTrue(levels.flatMap { it.tasks }.map { it.id }.let { it.size == it.toSet().size })
     }
 
-    /** R28: in Levels 0 and 1 every task can be solved by tapping chips alone. */
-    @Test fun chipsCoverTheSolutionInTheFirstLevels() {
-        for (lv in levels.filter { it.number <= 1 }) for (t in lv.tasks) {
+    /** R28: every task can be solved by tapping chips alone (from Level 2 on, after `hint`). */
+    @Test fun chipsCoverEverySolution() {
+        for (lv in levels) for (t in lv.tasks) {
             val words = guard.words(t.solution)
             assertTrue("${t.id}: chips ${t.chips} do not cover '${t.solution}'", words.all { it in t.chips })
         }
@@ -46,5 +46,18 @@ class LevelDataTest {
 
     @Test fun gameCommandsAreKnown() {
         for (lv in levels) for (t in lv.tasks) t.gameCommand?.let { assertTrue(it in GameEngine.GAME_COMMANDS) }
+    }
+}
+
+class LevelOrderTest {
+    @Test fun levelsRunWithoutGaps() {
+        assertTrue(Levels.all.map { it.number } == (0 until Levels.all.size).toList())
+    }
+
+    @Test fun hardCharactersAreOfferedOnTheKeyBar() {
+        // A solution with | ~ { } > * must name it in `keys`, so the key bar highlights it and the typing help appears.
+        for (lv in Levels.all) for (t in lv.tasks)
+            for (c in listOf("|", "~", "{", "}", ">", "*"))
+                if (t.solution.contains(c)) assertTrue("${t.id}: '$c' not in keys", c in t.keys)
     }
 }

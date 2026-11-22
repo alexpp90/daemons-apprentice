@@ -61,3 +61,28 @@ object HelpText {
     """.trimIndent()
 
 }
+
+/** Where the hard characters are (R3, R4): shown the first time a task needs one. */
+object KeyHelp {
+    val where = linkedMapOf(
+        "|" to ("the pipe" to "AltGr + <"),
+        "~" to ("the tilde" to "AltGr + +"),
+        "{" to ("an opening brace" to "AltGr + 7"),
+        "}" to ("a closing brace" to "AltGr + 0"),
+        "[" to ("an opening bracket" to "AltGr + 8"),
+        "]" to ("a closing bracket" to "AltGr + 9"),
+        "\\" to ("a backslash" to "AltGr + ß"),
+        ">" to ("the arrow" to "Shift + <"),
+        "*" to ("the star" to "Shift + +"),
+    )
+
+    fun card(keys: List<String>): String = buildString {
+        append("**New on the keyboard:**\n")
+        keys.forEach { k ->
+            val (name, german) = where.getValue(k)
+            append("  `").append(k).append("`  ").append(name)
+                .append(": on the key bar above the keyboard; on a German hardware keyboard ").append(german).append("\n")
+        }
+        append("On the phone's keyboard it hides behind **?123** (and **=\\<**). Type `keys` for all of them.")
+    }
+}

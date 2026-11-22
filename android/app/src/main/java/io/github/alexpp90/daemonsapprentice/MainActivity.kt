@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
             }
             override fun resize(rows: Int, cols: Int) = vm.resize(rows, cols)
             override fun resetGame() = vm.resetGame()
+            override fun jumpTo(level: Int) { vm.jumpTo(level) }
         }
         setContent {
             ApprenticeTheme {

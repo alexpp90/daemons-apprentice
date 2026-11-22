@@ -7,6 +7,10 @@ import io.github.alexpp90.daemonsapprentice.game.GameDirs
 import io.github.alexpp90.daemonsapprentice.game.GameEngine
 import io.github.alexpp90.daemonsapprentice.game.Line
 import io.github.alexpp90.daemonsapprentice.game.Level0
+import io.github.alexpp90.daemonsapprentice.game.Levels
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import io.github.alexpp90.daemonsapprentice.game.Wait
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -16,15 +20,24 @@ import java.io.File
 import java.nio.file.Files
 import kotlin.random.Random
 
-/** A stand-in for the phone's shell on the computer: `sh -c`, with the folder carried over. */
-class HostShell(start: File) : Shell {
+/**
+ * A stand-in for the phone's shell on the computer: bash (the computer's `sh` may know no
+ * `{a,b}` braces), the folder carried over, HOME set to the game's home, Ctrl-C by stopping it.
+ */
+class HostShell(start: File, private val home: File = start) : Shell {
     override var folder: String = start.absolutePath
-    override val busy = false
-    override suspend fun run(line: String, onOutput: (String) -> Unit): ShellResult {
+    @Volatile override var busy = false
+    @Volatile private var proc: Process? = null
+    @Volatile private var stopped = false
+    override suspend fun run(line: String, onOutput: (String) -> Unit): ShellResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val script = "cd '$folder' || exit 1\n$line\nprintf '\\036%d;%s\\037' \"\$?\" \"\$PWD\""
-        val p = ProcessBuilder("sh", "-c", script).redirectErrorStream(true).start()
+        val pb = ProcessBuilder("bash", "-c", script).redirectErrorStream(true)
+        pb.environment()["HOME"] = home.absolutePath
+        stopped = false; busy = true
+        val p = pb.start(); proc = p
         val text = p.inputStream.bufferedReader().readText()
-        p.waitFor()
+        p.waitFor(); busy = false
+        if (stopped) return@withContext ShellResult(text, 130, folder, interrupted = true)
         var out = ""; var status = 0
         MarkerParser { e ->
             when (e) {
@@ -34,9 +47,9 @@ class HostShell(start: File) : Shell {
             }
         }.feed(text)
         onOutput(out)
-        return ShellResult(out, status, folder)
+        ShellResult(out, status, folder)
     }
-    override fun interrupt() {}
+    override fun interrupt() { stopped = true; proc?.destroy() }
     override fun sendInput(line: String) {}
     override fun close() {}
 }
@@ -47,29 +60,67 @@ class EnginePlaythroughTest {
         val root = Files.createTempDirectory("apprentice").toFile()
         val dirs = GameDirs(root)
         dirs.playground.mkdirs(); dirs.game.mkdirs()
-        return GameEngine(dirs, HostShell(dirs.playground), random = Random(1)) to root
+        return GameEngine(dirs, HostShell(dirs.playground, dirs.home), random = Random(1)) to root
     }
 
     private suspend fun GameEngine.continueToPrompt() {
         var n = 0
-        while (state.value.wait == Wait.Continue && n++ < 20) onContinue()
+        while (state.value.wait == Wait.Continue && n++ < 50) onContinue()
     }
 
-    /** Every task's own solution solves it, from a fresh start, in order (the desktop's autoplay). */
-    @Test fun level0PlaysThroughWithItsSolutions() = runBlocking<Unit> {
+    /**
+     * Every level, every task solved by its own solution, from a fresh start, in order (the
+     * desktop's autoplay). `history` needs the phone's interactive shell: skipped here, played on
+     * the device.
+     */
+    @Test fun allLevelsPlayThroughWithTheirSolutions() = runBlocking<Unit> {
         val (g, root) = newGame()
         g.start()
-        for (t in Level0.level.tasks) {
+        for (lv in Levels.all) for (t in lv.tasks) {
             g.continueToPrompt()
             assertEquals("${t.id}: prompt", Wait.Prompt, g.state.value.wait)
-            assertEquals(t.title, g.state.value.taskTitle)
-            g.submit(t.solution)
+            assertEquals("${t.id}", t.title, g.state.value.taskTitle)
+            when (t.drive) {
+                "device" -> { g.submit("skip"); continue }
+                "ctrlc" -> {
+                    val job = launch { g.submit(t.solution) }
+                    withTimeout(5000) { while (g.state.value.wait != Wait.Busy) delay(20) }
+                    delay(300); g.interrupt(); job.join()
+                }
+                else -> g.submit(t.solution)
+            }
             if (t.gameCommand == "files") g.filePickerClosed()
-            assertEquals("${t.id}: not solved by '${t.solution}': ${g.state.value.transcript.takeLast(2)}", Wait.Continue, g.state.value.wait)
+            assertEquals("${t.id}: not solved by '${t.solution}': ${g.state.value.transcript.takeLast(3)}", Wait.Continue, g.state.value.wait)
         }
         g.continueToPrompt()
         assertEquals(Wait.Done, g.state.value.wait)
-        assertTrue(root.resolve("home/.apprentice-save").readText().contains("done=0"))
+        val save = root.resolve("home/.apprentice-save").readText()
+        assertTrue(save, save.contains("done=0,1,2,3,4"))
+        assertTrue(save, save.contains("flags=hidden_in_plain_sight"))
+        root.deleteRecursively()
+    }
+
+    @Test fun theMenuJumpsToALevelAndItsIntroShowsOnce() = runBlocking<Unit> {
+        val (g, root) = newGame()
+        g.start(); g.continueToPrompt()
+        g.jumpTo(3)
+        assertEquals(3, g.state.value.level)
+        assertEquals(Wait.Continue, g.state.value.wait) // the intro
+        g.continueToPrompt()
+        assertEquals("A new folder", g.state.value.taskTitle)
+        g.jumpTo(0); g.continueToPrompt()
+        g.jumpTo(3)
+        assertEquals(Wait.Prompt, g.state.value.wait) // intro already seen
+        root.deleteRecursively()
+    }
+
+    @Test fun typingHelpAppearsTheFirstTimeAHardCharacterIsNeeded() = runBlocking<Unit> {
+        val (g, root) = newGame()
+        g.start(); g.continueToPrompt()
+        g.jumpTo(2); g.continueToPrompt()
+        repeat(6) { g.submit("skip"); g.continueToPrompt() }         // to t2_7: cd ~
+        assertEquals("Beam me home", g.state.value.taskTitle)
+        assertTrue(g.state.value.transcript.any { it is Line.Text && it.text.contains("New on the keyboard") && it.text.contains("tilde") })
         root.deleteRecursively()
     }
 
@@ -91,7 +142,7 @@ class EnginePlaythroughTest {
     @Test fun progressSurvivesARestart() = runBlocking<Unit> {
         val (g, root) = newGame()
         g.start(); g.continueToPrompt(); g.submit("help"); g.continueToPrompt(); g.submit("echo hello")
-        val g2 = GameEngine(GameDirs(root), HostShell(GameDirs(root).playground), random = Random(2))
+        val g2 = GameEngine(GameDirs(root), HostShell(GameDirs(root).playground, GameDirs(root).home), random = Random(2))
         g2.start(); g2.continueToPrompt()
         assertEquals("Where am I?", g2.state.value.taskTitle)
         root.deleteRecursively()

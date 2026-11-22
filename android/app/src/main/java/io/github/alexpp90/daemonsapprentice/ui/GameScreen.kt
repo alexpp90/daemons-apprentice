@@ -69,6 +69,7 @@ interface ScreenActions {
     fun complete(text: String): String
     fun resize(rows: Int, cols: Int)
     fun resetGame()
+    fun jumpTo(level: Int)
 }
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalComposeUiApi::class)
@@ -123,7 +124,8 @@ fun GameScreen(state: GameState, actions: ScreenActions, showMenu: Boolean, onMe
             }
         }
     }
-    if (showMenu) MenuDialog(state, onClose = { onMenu(false) }, onReset = { onMenu(false); actions.resetGame() })
+    if (showMenu) MenuDialog(state, onClose = { onMenu(false) }, onReset = { onMenu(false); actions.resetGame() },
+        onLevel = { onMenu(false); actions.jumpTo(it) })
 }
 
 @Composable
@@ -182,7 +184,6 @@ private fun TaskPane(state: GameState, modifier: Modifier) {
         Spacer(Modifier.height(8.dp))
         Text("Tab  complete a name    ↑  last command", color = C.muted, fontSize = 12.sp, fontFamily = Mono)
         Text("Ctrl+C  stop    F1  hint    Ctrl+L  clear", color = C.muted, fontSize = 12.sp, fontFamily = Mono)
-        Text(markup("Stuck? Type `hint` (or F1). All help: `help`"), color = C.muted, fontSize = 12.sp)
     }
 }
 
@@ -306,11 +307,13 @@ private fun Bottom(
                     .clickable { input()?.submit() }.padding(horizontal = 14.dp, vertical = 8.dp).testTag("run"))
         }
         if (imeVisible) KeyBar(state, actions, input)
-        if (!hardwareMode || !wide) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)) {
+        // Always there, in every mode: a player who taps (even on a tablet with a keyboard attached)
+        // always reaches hint, and with it the command pieces (R4, R28).
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)) {
             Text("Stuck? Tap ", color = C.muted, fontSize = 12.sp)
             Text("hint", color = C.amber, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable { actions.submit("hint") }.testTag("hint"))
-            Text(". All help: ", color = C.muted, fontSize = 12.sp)
+            Text(if (hardwareMode) " (or press F1). All help: " else ". All help: ", color = C.muted, fontSize = 12.sp)
             Text("help", color = C.amber, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable { actions.submit("help") }.testTag("help"))
         }
@@ -345,7 +348,7 @@ private fun SmallKey(label: String, accent: Boolean = false, hot: Boolean = fals
 }
 
 @Composable
-private fun MenuDialog(state: GameState, onClose: () -> Unit, onReset: () -> Unit) {
+private fun MenuDialog(state: GameState, onClose: () -> Unit, onReset: () -> Unit, onLevel: (Int) -> Unit) {
     var confirm by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onClose,
@@ -353,8 +356,14 @@ private fun MenuDialog(state: GameState, onClose: () -> Unit, onReset: () -> Uni
         title = { Text("Menu", color = C.text) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Level 0  Hello, Terminal", color = C.text, fontFamily = Mono)
-                Text("Levels 1 to 15 come in the next builds.", color = C.muted, fontSize = 13.sp)
+                state.levels.forEach { l ->
+                    val mark = when { l.current -> "▸"; l.done -> "✓"; else -> " " }
+                    Text("$mark  Level ${l.number}  ${l.title}", color = if (l.current) C.blue else C.text, fontFamily = Mono, fontSize = 14.sp,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
+                            .clickable(enabled = state.wait != Wait.Busy) { onLevel(l.number) }
+                            .padding(vertical = 8.dp, horizontal = 4.dp).testTag("level:${l.number}"))
+                }
+                Text("Levels ${state.levels.size} to 15 come in the next builds.", color = C.muted, fontSize = 13.sp)
                 if (confirm) Text("Start over? This deletes your progress and the playground, nothing else.", color = C.amber, fontSize = 13.sp)
             }
         },

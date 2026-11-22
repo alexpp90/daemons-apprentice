@@ -142,6 +142,7 @@ object Level0 {
                 solution = "cat timeline.txt", solutionWhy = "`cat` shows the content of the file named after it.",
                 fact = "\"cat\" is short for \"concatenate\": it can glue files together, too.",
                 how = "the output shows the whole timeline",
+                drive = "tab:cat ti",
             ),
             Task(
                 id = "t0_7", title = "Search it",

@@ -24,6 +24,9 @@ data class Attempt(
     /** Set when the line was one of the game's own commands. */
     val gameCommand: String? = null,
     val interrupted: Boolean = false,
+    /** The playground and the home folder, for checks that look at files. */
+    val pg: File = File("/"),
+    val home: File = File("/"),
 ) {
     fun ran(c: String) = c in commands
     fun outHas(s: String) = output.contains(s)
@@ -61,6 +64,10 @@ class Task(
     val fact: String,
     /** One line for the curriculum: how the check decides. */
     val how: String,
+    /** A flag the task hands out (saved, counted in the cheatsheet). */
+    val flag: String? = null,
+    /** For the test players: how this task is driven beyond typing (`ctrlc`: stop it with Ctrl-C). */
+    val drive: String? = null,
     /** Commands that only look around: never called wrong (R17). */
     val lookAround: Set<String> = setOf("ls", "pwd", "cat", "echo", "date", "whoami"),
 )
