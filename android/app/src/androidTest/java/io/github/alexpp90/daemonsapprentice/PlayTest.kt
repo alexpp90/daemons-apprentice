@@ -39,15 +39,25 @@ class PlayTest {
     private val ctx = instr.targetContext
     private var scenario: ActivityScenario<MainActivity>? = null
     private val guard = Guard("/g", "/s")
-    private val tasks: List<Task> = Levels.all.flatMap { it.tasks }
+    /** `-e fromLevel N`: start at Level N (a saved game there), to check a late level quickly. */
+    private val fromLevel = InstrumentationRegistry.getArguments().getString("fromLevel")?.toIntOrNull()
+    private val tasks: List<Task> = Levels.all.filter { it.number >= (fromLevel ?: 0) }.flatMap { it.tasks }
     private val lastLevel = Levels.all.last().number
     private val dirs by lazy { GameDirs(ctx.filesDir) }
 
-    /** Level 15: the home screen for a while, then back to the game, as a player would. */
+    /**
+     * Level 15: the home screen for a while, then back to the very same screen, as from the recent
+     * apps (not a second copy of it: that would be a second game with a second shell).
+     */
     private fun awayAndBack() {
+        var taskId = -1
+        scenario!!.onActivity { taskId = it.taskId }
         device.pressHome()
         Thread.sleep(8_000)
-        shell("am start -n ${ctx.packageName}/.MainActivity")
+        val ui = instr.uiAutomation
+        ui.adoptShellPermissionIdentity()
+        try { ctx.getSystemService(android.app.ActivityManager::class.java).moveTaskToFront(taskId, 0) }
+        finally { ui.dropShellPermissionIdentity() }
     }
     /** Editor tasks: the text the player adds at the end of the file. */
     private fun appended(t: Task) = t.drive?.takeIf { it.startsWith("edit-append:") }?.removePrefix("edit-append:")
@@ -74,6 +84,7 @@ class PlayTest {
 
     private fun freshStart() {
         ctx.filesDir.listFiles()?.forEach { it.deleteRecursively() }
+        fromLevel?.let { File(ctx.filesDir, "home").mkdirs(); File(ctx.filesDir, "home/.apprentice-save").writeText("version=1\nlevel=$it\ntask=0\n") }
         FilePickerHook.override = {}
         shell("input keyevent KEYCODE_WAKEUP"); shell("wm dismiss-keyguard")
         dismissSystemDialogs()
@@ -199,7 +210,7 @@ class PlayTest {
             if (exists("next")) tap("next")
         }
         val s = saveText()
-        assertTrue(s, s.contains("done=" + Levels.all.joinToString(",") { it.number.toString() }))
+        if (fromLevel == null) assertTrue(s, s.contains("done=" + Levels.all.joinToString(",") { it.number.toString() }))
     }
 
     // --------------------------------------------------------------- keyboard
@@ -325,7 +336,7 @@ class PlayTest {
         }
         while (!finished) { enter(); Thread.sleep(300) }
         val s = saveText()
-        assertTrue(s, s.contains("done=" + Levels.all.joinToString(",") { it.number.toString() }))
+        if (fromLevel == null) assertTrue(s, s.contains("done=" + Levels.all.joinToString(",") { it.number.toString() }))
         if (imeShownAnyway > 0) android.util.Log.w("PlayTest", "Android showed a soft keyboard in $imeShownAnyway of ${tasks.size} tasks despite the hardware-keyboard set-up")
     }
 }

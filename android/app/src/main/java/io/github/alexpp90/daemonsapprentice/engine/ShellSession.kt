@@ -119,6 +119,18 @@ class ShellSession(
         }
         alive = false
         synchronized(lock) { finish(ShellResult(buf.toString(), -1, folder)) }
+        reap()
+    }
+
+    private val reaped = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * Collects the ended shell's exit status, once. Without it the shell stays a zombie child of
+     * the app, and Android 10's livelock watchdog kills an app whose zombie child lingers.
+     */
+    private fun reap() {
+        val child = pid
+        if (child > 0 && reaped.compareAndSet(false, true)) Pty.waitFor(child)
     }
 
     private fun writeRc() {
@@ -194,6 +206,7 @@ class ShellSession(
             if (g > 1 && g != pid) Pty.killGroup(g, 9)
             android.os.Process.killProcess(pid)
             android.os.Process.sendSignal(pid, 9)
+            thread(name = "apprentice-shell-reaper", isDaemon = true) { reap() }
         }
         try { pfd?.close() } catch (_: Exception) {}
         pfd = null

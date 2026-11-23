@@ -28,6 +28,12 @@ after `hint`) and with a hardware keyboard alone (typing, Enter, Tab, the
 arrows, Ctrl-C, Esc in the editor). The keyboard test switches the emulator's soft
 keyboards off for its run and back on afterwards, because Android treats an
 emulator's built-in keyboard as not external and would still show one.
+Level 15's trip to the home screen is played for real: Home, eight seconds,
+then the game's own task is brought back to the front (as from the recent
+apps). To check one late level quickly, start there from a saved game:
+`adb shell am instrument -w -e fromLevel 15 -e class
+io.github.alexpp90.daemonsapprentice.PlayTest
+io.github.alexpp90.daemonsapprentice.test/androidx.test.runner.AndroidJUnitRunner`.
 
 ## How it works
 

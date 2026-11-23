@@ -32,6 +32,19 @@ class ShellSessionTest {
 
     @After fun tearDown() { shell.close(); root.deleteRecursively() }
 
+    /** A closed shell leaves no zombie behind (Android 10's livelock watchdog kills an app that has one), even with a job still running. */
+    @Test fun closedShellIsReaped() = runBlocking<Unit> {
+        val pid = (shell.ownPids - android.os.Process.myPid()).single()
+        shell.run("sleep 30 &")
+        shell.close()
+        val status = File("/proc/$pid/status")
+        val gone = withTimeout(5_000) {
+            while (runCatching { status.readLines() }.getOrDefault(emptyList()).any { it.startsWith("State:") }) delay(100)
+            true
+        }
+        assertTrue("the shell $pid was reaped", gone)
+    }
+
     @Test fun outputAndStatus() = runBlocking<Unit> {
         val r = shell.run("echo hi")
         assertEquals("hi\n", r.output)
