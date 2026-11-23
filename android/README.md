@@ -34,6 +34,9 @@ apps). To check one late level quickly, start there from a saved game:
 `adb shell am instrument -w -e fromLevel 15 -e class
 io.github.alexpp90.daemonsapprentice.PlayTest
 io.github.alexpp90.daemonsapprentice.test/androidx.test.runner.AndroidJUnitRunner`.
+`-e ptylog 1` writes the shell's raw output to logcat (tag `Apprentice`), to
+compare a phone's answers with the level texts; `-e shots 1` keeps a
+screenshot of every solved task.
 
 ## How it works
 

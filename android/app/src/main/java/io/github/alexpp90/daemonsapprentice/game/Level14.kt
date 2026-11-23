@@ -46,8 +46,8 @@ object Level14 {
                 prep = at,
                 check = { a, _ -> a.ran("ping") },
                 hint1 = "Like before, with `-W 1` and 127.0.0.1.", hint2 = "`ping -c 1 -W 1 127.0.0.1`",
-                solution = "ping -c 1 -W 1 127.0.0.1", solutionWhy = "Newer Android lets an app ping the phone itself; older Android said no to that, too.",
-                fact = "Talking to yourself does not leave the phone, so newer Android allows it. Anything beyond still needs the inet group.",
+                solution = "ping -c 1 -W 1 127.0.0.1", solutionWhy = "Older Android said no at once. Newer Android lets the ping start, but on a phone no answer comes back.",
+                fact = "Without the internet permission, Android's own firewall drops this app's network messages, even ones that would never leave the phone. (An emulator on a computer may answer; a phone does not.)",
                 how = "ping ran",
             ),
             Task(

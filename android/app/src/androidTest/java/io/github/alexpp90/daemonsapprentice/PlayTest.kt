@@ -86,6 +86,8 @@ class PlayTest {
         ctx.filesDir.listFiles()?.forEach { it.deleteRecursively() }
         fromLevel?.let { File(ctx.filesDir, "home").mkdirs(); File(ctx.filesDir, "home/.apprentice-save").writeText("version=1\nlevel=$it\ntask=0\n") }
         FilePickerHook.override = {}
+        // `-e ptylog 1`: the shell's raw output to logcat (tag Apprentice), to compare a real phone's answers with the texts.
+        io.github.alexpp90.daemonsapprentice.engine.DEBUG = InstrumentationRegistry.getArguments().getString("ptylog") == "1"
         shell("input keyevent KEYCODE_WAKEUP"); shell("wm dismiss-keyguard")
         dismissSystemDialogs()
         scenario = ActivityScenario.launch(MainActivity::class.java)

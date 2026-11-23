@@ -109,7 +109,7 @@ object Level12 {
                 prep = at,
                 check = { a, _ -> a.ran("grep") && a.outHas("binder") },
                 hint1 = "`ls -l` the fd folder, then `grep binder`.", hint2 = "`ls -l /proc/\$PPID/fd | grep binder`",
-                solution = "ls -l /proc/\$PPID/fd | grep binder", solutionWhy = "`/dev/binder`: every call your app makes goes through this one open file.",
+                solution = "ls -l /proc/\$PPID/fd | grep binder", solutionWhy = "`/dev/binder` (on newer phones `/dev/binderfs/binder`): every call your app makes goes through this one open file.",
                 fact = "`fd` lists the files a process has open, by number. Binder is a device, like the ones in /dev from Level 5: one of the few an app may use.",
                 how = "the app has /dev/binder open",
             ),

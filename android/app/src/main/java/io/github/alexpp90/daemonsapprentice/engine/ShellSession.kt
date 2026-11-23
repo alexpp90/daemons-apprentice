@@ -110,7 +110,8 @@ class ShellSession(
                 decoder.decode(inBuf, outBuf, false)
                 inBuf.compact()
                 outBuf.flip()
-                val s = outBuf.toString()
+                // NUL bytes (as in /proc/*/cmdline) show as nothing, as on any terminal.
+                val s = outBuf.toString().replace("\u0000", "")
                 outBuf.clear()
                 if (DEBUG) android.util.Log.d("Apprentice", "pty> " + s.replace("\u001e", "<RS>").replace("\u001f", "<US>").replace("\u001d", "<GS>"))
                 parser.feed(s)
