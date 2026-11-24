@@ -74,6 +74,13 @@ for os in mac linux; do
     # R8/R10: levels are numbered 0..N without gaps, and the count matches
     n=0; for l in $TQ_LEVELS; do [ "$l" = "$n" ] || echo "FAIL R8 level list has a gap: $TQ_LEVELS"; n=$((n+1)); done
     [ "$n" = "$TQ_NLEVELS" ] || echo "FAIL R8 TQ_NLEVELS=$TQ_NLEVELS but $n levels"
+    # R39: every main-path level belongs to a rated chapter (Beginner/Intermediate/Advanced)
+    for l in $TQ_LEVELS; do
+      ch=$(tq_level_chapter "$l")
+      [ -n "$ch" ] || echo "FAIL R39 level $l has no chapter"
+      case "$(tq_chapter "$ch" rating)" in Beginner|Intermediate|Advanced) ;; *) echo "FAIL R39 chapter $ch invalid rating" ;; esac
+      [ -n "$(tq_chapter "$ch" title)" ] || echo "FAIL R39 chapter $ch has no title"
+    done
     # R8: every task has a cheatsheet entry (command|description)
     TQ_PKG_CMD="dpkg -s bash"
     for l in $TQ_LEVELS $TQ_SIDE; do for t in $(tq_L$l tasks); do

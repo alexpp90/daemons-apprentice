@@ -737,7 +737,7 @@ sc_supervisor() {
 
 sc_placement() {
   local answers want a
-  for spec in "11:a b a b b a a b b b" "3:a b b" "0:c"; do
+  for spec in "16:a b a b b a a b b b a b" "11:a b a b b a a b b b c" "3:a b b" "0:c"; do
     want=${spec%%:*}; answers=${spec#*:}
     new_home; start_game "placement_$want"
     expect "Your choice:" 10

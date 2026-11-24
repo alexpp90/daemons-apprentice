@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.4
+
+- **Chapters with difficulty ratings.** Levels are now grouped into six
+  chapters rated **Beginner**, **Intermediate**, and **Advanced** in the
+  level menu, level banners, status, and `CHEATSHEET.md`. *Glass Rooms &
+  Iron Walls* moved next to *Behind the Curtain* (Chapter 4), and older
+  v1.2/v1.3 save files migrate automatically.
+- **Chapter 6: Real-World Pentesting & Defense (`Advanced`).** Four new
+  hands-on Attack -> Fix -> Verify levels (Levels 16–19, 44 tasks, 8 new
+  flags) for both Linux and macOS using stock tools only:
+  - *Level 16 — Local Recon & Privilege Traps:* SUID discovery, writable
+    scheduled script hijacking and hardening, symlink redirection, and
+    wildcard flag injection (`cp *` vs `cp -- *`).
+  - *Level 17 — Web & HTTP Exploitation:* Local-only (`127.0.0.1`) HTTP
+    lab covering response headers, `robots.txt`, exposed `.env`, `../`
+    path traversal, IDOR, cookie tampering, live patching, and re-testing.
+  - *Level 18 — Terminal & Supply-Chain Traps:* Hidden ANSI escape bytes
+    (`cat -v`), Tar Slip archive inspection (`tar -tf`), SSH key locking
+    and `authorized_keys` backdoor removal, and `openssl` digital
+    signatures.
+  - *Level 19 — Network Exposure & TLS Defense:* `0.0.0.0` vs `127.0.0.1`
+    binding audit, safe loopback outbound callback demo, TLS certificate
+    inspection and verification, `--cacert` pinning vs `curl -k`, and a
+    5-question Defender's Checklist quiz.
+- 20 levels (0 to 19) with 238 tasks, plus 24 tasks in the two side
+  quests, 24 flags, and an extended placement check up to Level 16.
+
 ## 1.3
 
 The first public release.

@@ -33,13 +33,16 @@ if [ -z "${BASH_VERSION:-}" ]; then
   exit 1
 fi
 
-TQ_VERSION="1.3"
+TQ_VERSION="1.4"
 TQ_NAME="THE DAEMON'S APPRENTICE"
 TQ_PG="$HOME/apprentice-playground"
 TQ_SAVE="$HOME/.apprentice-save"
 TQ_SELF="$0"
-TQ_LEVELS="0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"
-TQ_NLEVELS=16
+TQ_LEVELS="0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19"
+TQ_NLEVELS=20
+# Chapters group the levels by theme and difficulty (Beginner, Intermediate,
+# Advanced). See tq_chapter() and tq_level_chapter().
+TQ_CHAPTERS="1 2 3 4 5 6"
 # Side quests (R21, R22): optional, off the main path. Each is a level
 # function tq_L<id> like the others, plus "after": the level whose end
 # offers it. They are always reachable in the level menu.
@@ -407,9 +410,41 @@ tq_load() {
   # keep the level and the flags, start that level's tasks afresh.
   case "$ver" in
     1.0|0.*) TQ_OLD_SAVE=1; TQ_TASK=1; TQ_SOLVED=""; TQ_SKIPPED="" ;;
-    1.1) tq_migrate_11; TQ_OLD_SAVE=2 ;;
+    1.1) tq_migrate_11; tq_migrate_13; TQ_OLD_SAVE=2 ;;
+    1.2|1.3) tq_migrate_13 ;;
   esac
   return 0
+}
+
+# Version 1.4 grouped the levels into rated chapters and moved Glass Rooms &
+# Iron Walls (old 15) next to Behind the Curtain (12), so old 13->14, 14->15,
+# 15->13. Keep every solved task and flag intact.
+tq_migrate_13() {
+  local list out t n
+  tq_mig13_id() {
+    n=${1#t}; n=${n%%_*}
+    case "$n" in
+      13) printf 't14_%s' "${1#*_}" ;;
+      14) printf 't15_%s' "${1#*_}" ;;
+      15) printf 't13_%s' "${1#*_}" ;;
+      *)  printf '%s' "$1" ;;
+    esac
+  }
+  for list in TQ_SOLVED TQ_SKIPPED; do
+    out=""
+    for t in $(eval "printf '%s' \"\$$list\""); do
+      t=$(tq_mig13_id "$t"); [ -n "$t" ] && out="${out:+$out }$t"
+    done
+    eval "$list=\$out"
+  done
+  out=""
+  for t in $TQ_DONE_LEVELS; do
+    case "$t" in 13) out="${out:+$out }14" ;; 14) out="${out:+$out }15" ;; 15) out="${out:+$out }13" ;; *) out="${out:+$out }$t" ;; esac
+  done
+  TQ_DONE_LEVELS=$out
+  case "$TQ_LEVEL" in 13) TQ_LEVEL=14 ;; 14) TQ_LEVEL=15 ;; 15) TQ_LEVEL=13 ;; esac
+  case "$TQ_BACK"  in 13) TQ_BACK=14  ;; 14) TQ_BACK=15  ;; 15) TQ_BACK=13  ;; esac
+  unset -f tq_mig13_id
 }
 
 # Version 1.2 put two new levels (8 and 9) in front of the scripts level
@@ -639,56 +674,100 @@ tq_cheat_entry() {
     t12_11) echo 'lock|Take turns, and nothing gets lost' ;;
     t12_12) echo "bash -c 'RANDOM=2026; echo \$RANDOM'|Same seed, same numbers" ;;
     t12_13) echo '$RANDOM vs /dev/urandom|Seeded random is predictable' ;;
-    t13_1) echo 'openssl enc -aes-256-cbc|Encrypt a file (weak passwords fall fast!)' ;;
-    t13_2) echo 'head -c 8 file|Peek at the first bytes of a binary file' ;;
-    t13_3) echo 'while read w; do ...; done < list|A cracker is just a loop' ;;
-    t13_4) echo 'bash crack.sh file|A dictionary attack on a weak password' ;;
-    t13_5) echo '-pbkdf2 -iter 200000|Key stretching makes every guess slow' ;;
-    t13_6) echo 'bash bench.sh|Measure how much slower the attacker gets' ;;
-    t13_7) echo '-pass "pass:Long-Phrase-99!"|A long passphrase beats guessing' ;;
-    t13_8) echo 'entropy|More random characters, many more guesses' ;;
-    t13_9) echo 'crack fails|A strong password holds' ;;
-    t13_10) echo 'cat < /dev/tcp/127.0.0.1/P|Knock on a local port, read its banner' ;;
-    t13_11) echo 'cmd1 && cmd2|Second only if the first worked; cleartext = postcard' ;;
-    t13_12) echo 'encrypt on the wire|https:// seals the envelope' ;;
-    t13_13) echo 'eval "$input"|Never run user input as code' ;;
-    t13_14) echo '"name; command"|How command injection works' ;;
-    t13_15) printf '%s\n' "printf '%s\n' A B > file|Write a file line by line; data stays data" ;;
-    t13_16) echo 're-test|Attack your own fix' ;;
-    t13_17) echo 'bash audit.sh|Look for holes like an attacker' ;;
-    t13_18) echo 'chmod 600 .env|Lock the keys' ;;
-    t13_19) echo 'DEBUG_MODE=off|No chatty debug output in production' ;;
-    t13_20) echo "printf %s PHRASE \| $TQ_SHA|Store only strong password hashes" ;;
-    t14_1) echo 'cat before bash|Read a script first: it runs with all your rights' ;;
-    t14_2) echo 'blast radius|Any script can read everything you can' ;;
-    t14_3) echo 'entry, persistence, spread, payload|The four stages of a virus' ;;
-    t14_4) echo 'cat the copier|Read it before you let it loose' ;;
-    t14_5) echo 'one loop, many files|Speed is what makes viruses dangerous' ;;
-    t14_6) echo 'grep -c WORD files|Count matches in each file' ;;
-    t14_7) echo "cat ~/$(tq_os .zshrc .bashrc)|Check startup files for hooks" ;;
-    t14_8) echo 'grep -v WORD f > tmp|Keep the lines that do NOT match' ;;
-    t14_9) echo 'mv tmp f|Swap in the cleaned file (never > the file you read)' ;;
-    t14_10) echo 'for f in ...; do echo ...; done|Rehearse before changing many files' ;;
-    t14_11) echo 'for f in ...; do ... && mv; done|Clean many files' ;;
-    t14_12) echo 'verify|Cut persistence, clean, then check' ;;
-    t14_13) echo 'ls -l /bin/ls|System programs belong to root' ;;
-    t14_14) echo './data without x|No x bit, no run' ;;
-    t14_15) echo 'bash file|bash runs any text file: x is a lock, not a wall' ;;
-    t14_16) echo 'cp a b|Make a variant' ;;
-    t14_17) echo 'echo "#" >> f|One harmless byte' ;;
-    t14_18) echo "$TQ_SHA a b|One changed byte, a totally new hash" ;;
-    t14_19) echo 'defense in depth|Backups, patches, least privilege, isolation' ;;
-    t15_1) echo 'ps -u "$USER" \| wc -l|Every program you start runs with your rights' ;;
-    t15_2) tq_os 'ps -p 1 -o pid,comm|Show PID 1 (launchd on a Mac)' 'ls -l /proc/self/ns|The namespaces (views) a process lives in' ;;
-    t15_3) tq_os 'sysctl kern.maxprocperuid|Kernel limit: processes per user' 'cat /proc/self/cgroup|The cgroup that limits a process' ;;
-    t15_4) tq_os 'sysctl kern.maxfilesperproc|Kernel limit: open files per process' 'grep -E "Seccomp\|CapEff" /proc/self/status|Kernel-call filter and powers' ;;
-    t15_5) echo 'echo "$SECRET"|Secrets live in the environment' ;;
-    t15_6) echo 'child inherits env|Every program you start sees your variables' ;;
-    t15_7) echo 'env -i PATH=/usr/bin:/bin cmd|Run a command in a clean room' ;;
-    t15_8) echo 'container vs VM|Shared kernel vs own kernel' ;;
-    t15_9) tq_os 'sysctl kern.hv_support|Can this Mac run a hypervisor? (1 = yes)' 'LC_ALL=C lscpu \| grep -i virt|Does the CPU support virtual machines?' ;;
-    t15_10) tq_os 'sysctl kern.hv_vmm_present|Am I inside a VM? (1 = yes)' 'systemd-detect-virt|Am I inside a VM or container? (none = no)' ;;
-    t15_11) echo 'process, container, VM|Pick the wall that fits how much you trust the code' ;;
+    t13_1) echo 'ps -u "$USER" \| wc -l|Every program you start runs with your rights' ;;
+    t13_2) tq_os 'ps -p 1 -o pid,comm|Show PID 1 (launchd on a Mac)' 'ls -l /proc/self/ns|The namespaces (views) a process lives in' ;;
+    t13_3) tq_os 'sysctl kern.maxprocperuid|Kernel limit: processes per user' 'cat /proc/self/cgroup|The cgroup that limits a process' ;;
+    t13_4) tq_os 'sysctl kern.maxfilesperproc|Kernel limit: open files per process' 'grep -E "Seccomp\|CapEff" /proc/self/status|Kernel-call filter and powers' ;;
+    t13_5) echo 'echo "$SECRET"|Secrets live in the environment' ;;
+    t13_6) echo 'child inherits env|Every program you start sees your variables' ;;
+    t13_7) echo 'env -i PATH=/usr/bin:/bin cmd|Run a command in a clean room' ;;
+    t13_8) echo 'container vs VM|Shared kernel vs own kernel' ;;
+    t13_9) tq_os 'sysctl kern.hv_support|Can this Mac run a hypervisor? (1 = yes)' 'LC_ALL=C lscpu \| grep -i virt|Does the CPU support virtual machines?' ;;
+    t13_10) tq_os 'sysctl kern.hv_vmm_present|Am I inside a VM? (1 = yes)' 'systemd-detect-virt|Am I inside a VM or container? (none = no)' ;;
+    t13_11) echo 'process, container, VM|Pick the wall that fits how much you trust the code' ;;
+    t14_1) echo 'openssl enc -aes-256-cbc|Encrypt a file (weak passwords fall fast!)' ;;
+    t14_2) echo 'head -c 8 file|Peek at the first bytes of a binary file' ;;
+    t14_3) echo 'while read w; do ...; done < list|A cracker is just a loop' ;;
+    t14_4) echo 'bash crack.sh file|A dictionary attack on a weak password' ;;
+    t14_5) echo '-pbkdf2 -iter 200000|Key stretching makes every guess slow' ;;
+    t14_6) echo 'bash bench.sh|Measure how much slower the attacker gets' ;;
+    t14_7) echo '-pass "pass:Long-Phrase-99!"|A long passphrase beats guessing' ;;
+    t14_8) echo 'entropy|More random characters, many more guesses' ;;
+    t14_9) echo 'crack fails|A strong password holds' ;;
+    t14_10) echo 'cat < /dev/tcp/127.0.0.1/P|Knock on a local port, read its banner' ;;
+    t14_11) echo 'cmd1 && cmd2|Second only if the first worked; cleartext = postcard' ;;
+    t14_12) echo 'encrypt on the wire|https:// seals the envelope' ;;
+    t14_13) echo 'eval "$input"|Never run user input as code' ;;
+    t14_14) echo '"name; command"|How command injection works' ;;
+    t14_15) printf '%s\n' "printf '%s\n' A B > file|Write a file line by line; data stays data" ;;
+    t14_16) echo 're-test|Attack your own fix' ;;
+    t14_17) echo 'bash audit.sh|Look for holes like an attacker' ;;
+    t14_18) echo 'chmod 600 .env|Lock the keys' ;;
+    t14_19) echo 'DEBUG_MODE=off|No chatty debug output in production' ;;
+    t14_20) echo "printf %s PHRASE \| $TQ_SHA|Store only strong password hashes" ;;
+    t15_1) echo 'cat before bash|Read a script first: it runs with all your rights' ;;
+    t15_2) echo 'blast radius|Any script can read everything you can' ;;
+    t15_3) echo 'entry, persistence, spread, payload|The four stages of a virus' ;;
+    t15_4) echo 'cat the copier|Read it before you let it loose' ;;
+    t15_5) echo 'one loop, many files|Speed is what makes viruses dangerous' ;;
+    t15_6) echo 'grep -c WORD files|Count matches in each file' ;;
+    t15_7) echo "cat ~/$(tq_os .zshrc .bashrc)|Check startup files for hooks" ;;
+    t15_8) echo 'grep -v WORD f > tmp|Keep the lines that do NOT match' ;;
+    t15_9) echo 'mv tmp f|Swap in the cleaned file (never > the file you read)' ;;
+    t15_10) echo 'for f in ...; do echo ...; done|Rehearse before changing many files' ;;
+    t15_11) echo 'for f in ...; do ... && mv; done|Clean many files' ;;
+    t15_12) echo 'verify|Cut persistence, clean, then check' ;;
+    t15_13) echo 'ls -l /bin/ls|System programs belong to root' ;;
+    t15_14) echo './data without x|No x bit, no run' ;;
+    t15_15) echo 'bash file|bash runs any text file: x is a lock, not a wall' ;;
+    t15_16) echo 'cp a b|Make a variant' ;;
+    t15_17) echo 'echo "#" >> f|One harmless byte' ;;
+    t15_18) echo "$TQ_SHA a b|One changed byte, a totally new hash" ;;
+    t15_19) echo 'defense in depth|Backups, patches, least privilege, isolation' ;;
+    t16_1) echo 'find /usr/bin -perm -4000 2>/dev/null|Find SUID programs that run as their owner' ;;
+    t16_2) echo 'ls -l cronlab/nightly.sh|Check permissions on scheduled scripts' ;;
+    t16_3) echo 'echo CMD >> script.sh|A world-writable scheduled script can be hijacked' ;;
+    t16_4) echo 'bash cronlab/runner.sh|Scheduled jobs run injected lines automatically' ;;
+    t16_5) echo 'chmod 755 script.sh|Only the owner may edit a scheduled script' ;;
+    t16_6) echo 'cat symlinklab/logger.sh|Watch for fixed paths in shared folders' ;;
+    t16_7) echo 'ln -sf TARGET LINK|A symlink redirects writes to another file' ;;
+    t16_8) echo 'mktemp / check -L|Defend against symlink redirection attacks' ;;
+    t16_9) echo 'cat wildlab/publish.sh|Unquoted * expands file names as command flags' ;;
+    t16_10) echo 'touch -- -R|A file starting with - can turn into an option' ;;
+    t16_11) echo 'cp * dest/|Wildcard injection turned cp into cp -R' ;;
+    t16_12) echo 'cp -- * dest/|Double dash stops option parsing before *' ;;
+    t17_1) echo 'curl -s -i URL|Show HTTP response headers (server version, status)' ;;
+    t17_2) echo 'curl -s URL/robots.txt|robots.txt is public, never a lock' ;;
+    t17_3) echo 'curl -s URL/.env|Never expose dotfiles in a web root' ;;
+    t17_4) echo 'curl --path-as-is URL/files/../secret|Path traversal escapes the web folder' ;;
+    t17_5) echo 'curl -s "URL/invoice?id=102"|Inspect how a web app indexes records' ;;
+    t17_6) echo 'curl -s "URL/invoice?id=101"|IDOR: changing an ID without ownership checks' ;;
+    t17_7) echo 'curl -s -b "role=admin" URL/admin|Cookies live on the client: never trust them raw' ;;
+    t17_8) echo 'cat server.conf|Inspect live web server security switches' ;;
+    t17_9) echo 'BLOCK_TRAVERSAL=on|Enable server-side path, dotfile and session checks' ;;
+    t17_10) echo 'curl -s -i --path-as-is ...|Re-test path traversal and confirm 403 Forbidden' ;;
+    t17_11) echo 'curl -s -i -b "role=admin" ...|Re-test forged cookie and confirm 403 Forbidden' ;;
+    t18_1) echo 'cat sneaky_install.sh|Plain cat obeys terminal escape codes' ;;
+    t18_2) echo 'cat -v FILE|Reveal hidden control bytes and escape traps' ;;
+    t18_3) echo 'tar -tf ARCHIVE.tar|Inspect archive paths before unpacking (Tar Slip)' ;;
+    t18_4) echo 'rm update.tar|Reject archives with .. or leading / paths' ;;
+    t18_5) echo 'ls -la ssh_demo|Check SSH key and folder permissions' ;;
+    t18_6) echo 'chmod 600 id_key|Lock private SSH keys to owner read/write only' ;;
+    t18_7) echo 'cat authorized_keys|Audit who can log in without a password' ;;
+    t18_8) echo 'grep -v ROGUE authorized_keys|Evict unauthorized SSH persistence keys' ;;
+    t18_9) echo 'openssl dgst -sha256 -sign KEY|Sign a file with a private key' ;;
+    t18_10) echo 'openssl dgst -sha256 -verify PUB|Verify a release signature with a public key' ;;
+    t18_11) echo 'verify tampered file|Changing one byte breaks the digital signature' ;;
+    t19_1) tq_os 'netstat -an -p tcp \| grep LISTEN|Check which ports bind 127.0.0.1 vs *' 'ss -tln|Check which ports bind 127.0.0.1 vs 0.0.0.0' ;;
+    t19_2) echo 'cat app/devserver.conf|Audit bind addresses before running services' ;;
+    t19_3) echo 'BIND_HOST=127.0.0.1|Bind local services to loopback, not 0.0.0.0' ;;
+    t19_4) echo 'cat revshell/demo.sh|Read how an outbound reverse shell calls home' ;;
+    t19_5) echo 'bash revshell/demo.sh|Outbound calls bypass inbound-only firewalls' ;;
+    t19_6) echo 'openssl x509 -in CERT -noout -subject -issuer|Inspect who signed an HTTPS cert' ;;
+    t19_7) echo 'openssl verify CERT|Untrusted self-signed certs fail verification' ;;
+    t19_8) echo 'curl -sS https://127.0.0.1:P/|curl refuses untrusted TLS certs by default' ;;
+    t19_9) echo 'curl -sS --cacert CERT URL|Pin a trusted cert instead of disabling TLS (-k)' ;;
+    t19_10) echo 'pentest defense checklist|Apply attacker insight to protect real systems' ;;
     tS1_1) echo 'uptime|How long the computer has been running' ;;
     tS1_2) echo 'ps aux \| wc -l|How many programs are running' ;;
     tS1_3) echo 'ps -A -o rss,comm \| sort -n \| tail -n 3|The three hungriest programs (memory in KB)' ;;
@@ -719,7 +798,7 @@ tq_cheat_entry() {
 tq_cheatsheet_update() {
   TQ_CHEAT="$TQ_PG/CHEATSHEET.md"
   [ -d "$TQ_PG" ] || return 0
-  local l t entry cmd desc count=0
+  local l t entry cmd desc count=0 cur_ch="" ch
   {
     echo "# Your Growing Terminal Cheatsheet"
     echo ""
@@ -733,7 +812,22 @@ tq_cheatsheet_update() {
           entry=$(tq_cheat_entry "$t")
           [ -z "$entry" ] && continue
           if [ "$header_printed" = 0 ]; then
-            echo "## $(tq_lname "$l"): $("tq_L$l" title)"
+            if ! tq_is_side "$l"; then
+              ch=$(tq_level_chapter "$l")
+              if [ -n "$ch" ] && [ "$ch" != "$cur_ch" ]; then
+                echo "## Chapter $ch: $(tq_chapter "$ch" title) [$(tq_chapter "$ch" rating)]"
+                echo ""
+                cur_ch=$ch
+              fi
+              echo "### $(tq_lname "$l"): $("tq_L$l" title)"
+            else
+              if [ "$cur_ch" != "SIDE" ]; then
+                echo "## Side Quests"
+                echo ""
+                cur_ch="SIDE"
+              fi
+              echo "### $(tq_lname "$l"): $("tq_L$l" title)"
+            fi
             echo ""
             header_printed=1
           fi
@@ -1850,6 +1944,38 @@ tq_fmt_inline() {
 #   title, tasks (list of task ids), intro (art and story), setup (build
 #   the playground part; must be safe to run again), outro (wrap-up).
 
+# Chapters: theme, difficulty rating (Beginner / Intermediate / Advanced),
+# and which main-path levels belong to each chapter.
+tq_chapter() {
+  case "$1:$2" in
+    1:title)  echo "Terminal Basics" ;;
+    1:rating) echo "Beginner" ;;
+    1:levels) echo "0 1 2 3 4" ;;
+    2:title)  echo "Inside Your Computer" ;;
+    2:rating) echo "Beginner" ;;
+    2:levels) echo "5 6 7" ;;
+    3:title)  echo "Scripting & AI Agents" ;;
+    3:rating) echo "Intermediate" ;;
+    3:levels) echo "8 9 10 11" ;;
+    4:title)  echo "Under the Hood & Isolation" ;;
+    4:rating) echo "Intermediate" ;;
+    4:levels) echo "12 13" ;;
+    5:title)  echo "Security Foundations & Malware" ;;
+    5:rating) echo "Intermediate" ;;
+    5:levels) echo "14 15" ;;
+    6:title)  echo "Real-World Pentesting & Defense" ;;
+    6:rating) echo "Advanced" ;;
+    6:levels) echo "16 17 18 19" ;;
+  esac
+}
+tq_level_chapter() {
+  local ch
+  for ch in $TQ_CHAPTERS; do
+    tq_has "$(tq_chapter "$ch" levels)" "$1" && { echo "$ch"; return 0; }
+  done
+  return 1
+}
+
 tq_is_side() { [ -n "$1" ] && tq_has "$TQ_SIDE" "$1"; }
 tq_valid_level() { [ -n "$1" ] && { tq_has "$TQ_LEVELS" "$1" || tq_has "$TQ_SIDE" "$1"; }; }
 # What a level is called on the screen: "Level 4" or "Side quest S1".
@@ -2055,15 +2181,19 @@ tq_explore_show() {
 }
 
 tq_status() {
-  local l total=0 s=0 t
+  local l total=0 s=0 t ch
   for l in $TQ_LEVELS; do
     for t in $(tq_level_tasks "$l"); do total=$((total+1)); tq_has "$TQ_SOLVED" "$t" && s=$((s+1)); done
   done
   echo
   tq_say "**Your progress:** $s of $total tasks solved, $(tq_count "$TQ_FLAGS") flags captured."
   tq_say "Side quests done: $(tq_count "$TQ_DONE_SIDE") of $(tq_count "$TQ_SIDE")."
-  if tq_is_side "$TQ_LEVEL"; then tq_say "Now in side quest $TQ_LEVEL: $("tq_L$TQ_LEVEL" title)."
-  else tq_say "Now in level $TQ_LEVEL: $("tq_L$TQ_LEVEL" title)."; fi
+  if tq_is_side "$TQ_LEVEL"; then
+    tq_say "Now in side quest $TQ_LEVEL: $("tq_L$TQ_LEVEL" title)."
+  else
+    ch=$(tq_level_chapter "$TQ_LEVEL")
+    tq_say "Now in level $TQ_LEVEL: $("tq_L$TQ_LEVEL" title) (Ch $ch, $(tq_chapter "$ch" rating))."
+  fi
   [ -n "$TQ_BADGE" ] && tq_say "Badge: **$TQ_BADGE**"
   tq_say "Playground: \`$TQ_PG_SHOW\`
 Cheatsheet: \`$TQ_PG_SHOW/CHEATSHEET.md\` (type \`cheat\` to view)
@@ -2130,15 +2260,20 @@ tq_main_menu() {
 }
 
 tq_pick_level() {
-  local l
-  echo
-  tq_say "**Levels**"
-  for l in $TQ_LEVELS; do tq_level_menu_line "$l"; done
+  local ch l af ach
+  for ch in $TQ_CHAPTERS; do
+    echo
+    printf '  %sChapter %s: %s%s %s[%s]%s\n' \
+      "$C_HEAD" "$ch" "$(tq_chapter "$ch" title)" "$C_0" \
+      "$C_DIM" "$(tq_chapter "$ch" rating)" "$C_0"
+    for l in $(tq_chapter "$ch" levels); do tq_level_menu_line "$l"; done
+  done
   echo
   tq_say "**Side quests** (optional; type S1 or S2)"
   for l in $TQ_SIDE; do
     tq_level_menu_line "$l"
-    tq_dim "          best after Level $("tq_L$l" after)"
+    af=$("tq_L$l" after); ach=$(tq_level_chapter "$af")
+    tq_dim "          best after Level $af [$(tq_chapter "$ach" rating)]"
   done
   printf '\n  %sLevel number (Enter = back):%s ' "$C_B" "$C_0"
   tq_ask || return 1; l=$TQ_ANS
@@ -2169,7 +2304,7 @@ tq_placement() {
   echo
   tq_say "**Placement check.** A few quick questions, answer with a, b or c.
 Not sure? Pick \"c\". The first gap decides where you start."
-  local q=0 ans lvl=""
+  local q=0 ans lvl="" ch
   tq_pq() {
     # $1 level, $2 question, $3..$5 options, $6 right letter
     q=$((q+1))
@@ -2202,10 +2337,15 @@ Not sure? Pick \"c\". The first gap decides where you start."
     "Today is \$(date +%A)" "Today is, then the weekday" "I don't know" b
   [ -z "$lvl" ] && tq_pq 10 "A script starts with \`#!/bin/bash\`. Why?" \
     "It is a comment and does nothing" "It names the program that runs the script" "I don't know" b
-  [ -z "$lvl" ] && lvl=11
+  [ -z "$lvl" ] && tq_pq 11 "Why is \`eval \"\$user_input\"\` dangerous in a script?" \
+    "It runs whatever commands the user sneaks into the input" "It makes the script slower" "I don't know" a
+  [ -z "$lvl" ] && tq_pq 14 "How does a container differ from a virtual machine?" \
+    "Containers need more RAM" "Containers share the host kernel; a VM runs its own" "I don't know" b
+  [ -z "$lvl" ] && lvl=16
   unset -f tq_pq
+  ch=$(tq_level_chapter "$lvl")
   echo
-  tq_ok "Suggested start: Level $lvl, $("tq_L$lvl" title)."
+  tq_ok "Suggested start: Level $lvl, $("tq_L$lvl" title) (Ch $ch: $(tq_chapter "$ch" rating))."
   if tq_yes "Start there?"; then TQ_LEVEL=$lvl; TQ_TASK=1; return 0; fi
   return 1
 }
@@ -2219,6 +2359,8 @@ tq_cleanup() {
   [ -n "$TQ_STTY" ] && stty "$TQ_STTY" 2>/dev/null
   tq_rogue_stop
   tq_netlab_stop
+  tq_weblab_stop
+  tq_tlslab_stop
   [ -n "$TQ_TMP" ] && [ -d "$TQ_TMP" ] && rm -rf "$TQ_TMP"
 }
 
@@ -2380,11 +2522,20 @@ Saved progress: level $TQ_LEVEL, task $TQ_TASK."
 # ===========================================================================
 
 tq_banner() {
-  # $1 first line, $2 second line
+  # $1 first line, $2 second line. For "LEVEL N", include its chapter & rating.
+  local l1=$1 l2=$2 n ch
+  case "$1" in
+    "LEVEL "*)
+      n=${1#LEVEL }
+      if ch=$(tq_level_chapter "$n" 2>/dev/null); then
+        l1="CHAPTER $ch: $(tq_chapter "$ch" title)  [$(tq_chapter "$ch" rating)]"
+        l2="$1: $2"
+      fi ;;
+  esac
   printf '\n%s' "$C_ART"
   printf '   .--------------------------------------------------------------------.\n'
-  printf '   |  %-66s|\n' "$1"
-  printf '   |  %-66s|\n' "$2"
+  printf '   |  %-66s|\n' "$l1"
+  printf '   |  %-66s|\n' "$l2"
   printf "   '--------------------------------------------------------------------'\n"
   printf '%s' "$C_0"
 }
@@ -2514,6 +2665,14 @@ tq_needs_note() {
         echo
         tq_warn "Heads-up: the practice services could not start here."
         tq_say "They need perl or python3. Read along, then type \`skip\`." ;;
+      weblab) command -v curl >/dev/null 2>&1 && tq_weblab_alive && continue
+        echo
+        tq_warn "Heads-up: the local web lab could not start here."
+        tq_say "It needs curl plus perl or python3. Read along, then type \`skip\`." ;;
+      tlslab) command -v curl >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 && tq_tlslab_alive && continue
+        echo
+        tq_warn "Heads-up: the local HTTPS lab could not start here."
+        tq_say "It needs curl and openssl. Read along, then type \`skip\`." ;;
     esac
   done
 }
@@ -2629,6 +2788,301 @@ while (time < $end) {
 }
 PL
     tq_netlab_wait $!
+}
+
+# Safe local-only (127.0.0.1) vulnerable HTTP server for Level 17.
+# Reads server.conf on every request so live patches take effect immediately.
+tq_weblab_stop() {
+  local p
+  p=$(cat "$TQ_PG/weblab/.pid" 2>/dev/null)
+  case "$p" in ''|*[!0-9]*) ;; *) kill "$p" 2>/dev/null ;; esac
+  rm -f "$TQ_PG/weblab/.pid"
+}
+tq_weblab_alive() {
+  local p; p=$(cat "$TQ_PG/weblab/.pid" 2>/dev/null)
+  case "$p" in ''|*[!0-9]*) return 1 ;; esac
+  kill -0 "$p" 2>/dev/null
+}
+tq_weblab_port() {
+  local p
+  p=$(cat "$TQ_PG/weblab/.port" 2>/dev/null)
+  case "$p" in ''|*[!0-9]*) echo 18520 ;; *) echo "$p" ;; esac
+}
+tq_weblab_wait() {
+  local tries=0
+  while [ "$tries" -lt 200 ]; do
+    tq_weblab_alive && return 0
+    kill -0 "$1" 2>/dev/null || { tq_weblab_alive; return; }
+    sleep 0.05; tries=$((tries + 1))
+  done
+  kill "$1" 2>/dev/null
+  return 1
+}
+tq_weblab_start() {
+  mkdir -p "$TQ_PG/weblab"
+  tq_weblab_alive && return 0
+  rm -f "$TQ_PG/weblab/.pid"
+  tq_weblab_perl || tq_weblab_python
+  [ -f "$TQ_PG/weblab/.port" ] || echo "18520" > "$TQ_PG/weblab/.port"
+}
+tq_weblab_perl() {
+  [ -z "${TQ_NETLAB_PYTHON:-}" ] && command -v perl >/dev/null 2>&1 || return 1
+  perl - "$TQ_PG/weblab/.port" "$TQ_PG/weblab/.pid" "$TQ_PG/weblab/server.conf" </dev/null >/dev/null 2>&1 <<'PL' &
+use strict; use warnings; use IO::Socket::INET; use IO::Select;
+my ($port_file, $pid_file, $conf_file) = @ARGV;
+my ($port, $srv);
+for (my $cand = 18520; $cand < 19490; $cand += 1) {
+  my $s = IO::Socket::INET->new(LocalAddr => '127.0.0.1', LocalPort => $cand,
+                                Listen => 16, ReuseAddr => 1, Proto => 'tcp');
+  if ($s) { $port = $cand; $srv = $s; last; }
+}
+exit 1 unless $srv;
+open(my $bf, '>', $port_file) or exit 1; print $bf "$port\n"; close $bf;
+open(my $pf, '>', $pid_file) or exit 1; print $pf "$$\n"; close $pf;
+sub read_conf {
+  my %c = (BLOCK_DOTFILES => 'off', BLOCK_TRAVERSAL => 'off', VERIFY_SESSION => 'off');
+  if (open(my $fh, '<', $conf_file)) {
+    while (my $ln = <$fh>) {
+      chomp $ln;
+      my $eq = index($ln, '=');
+      next if $eq < 1;
+      my $k = substr($ln, 0, $eq);
+      my $v = substr($ln, $eq + 1);
+      $c{$k} = $v;
+    }
+    close $fh;
+  }
+  return %c;
+}
+my $sel = IO::Select->new($srv);
+my $end = time + 3600;
+while (time < $end) {
+  for my $l ($sel->can_read(5)) {
+    my $c = $l->accept or next;
+    my $req = "";
+    my $csel = IO::Select->new($c);
+    while ($csel->can_read(2)) {
+      my $buf = "";
+      my $n = sysread($c, $buf, 4096);
+      last unless $n;
+      $req .= $buf;
+      last if index($req, "\r\n\r\n") >= 0 || index($req, "\n\n") >= 0 || length($req) > 8192;
+    }
+    my @lines = split(/\r?\n/, $req);
+    my $first = $lines[0] || "";
+    my @parts = split(/ /, $first);
+    my $path = $parts[1] || "/";
+    my $cookie = "";
+    for my $h (@lines) {
+      if (index(lc($h), "cookie:") == 0) { $cookie = substr($h, 7); }
+    }
+    my %cfg = read_conf();
+    my ($status, $body) = ("200 OK", "MiniShop Home: browse /files/hello.txt or /invoice?id=102\n");
+    if ($path eq "/" || $path eq "/index.html") {
+      # default home
+    } elsif ($path eq "/robots.txt") {
+      $body = "User-agent: *\nDisallow: /admin\nDisallow: /.env\n";
+    } elsif ($path eq "/.env") {
+      if ($cfg{BLOCK_DOTFILES} eq "on") {
+        $status = "403 Forbidden"; $body = "Blocked: dotfiles are not served\n";
+      } else {
+        $body = "DB_PASS=summer2026\nAPI_TOKEN=live_9981_leaked\n";
+      }
+    } elsif (index($path, "/files/") == 0) {
+      if (index($path, "..") >= 0) {
+        if ($cfg{BLOCK_TRAVERSAL} eq "on") {
+          $status = "403 Forbidden"; $body = "Blocked: path traversal denied\n";
+        } elsif (index($path, "vault.txt") >= 0) {
+          $body = "PRIVATE VAULT: FLAG{never-trust-dot-dot-paths}\n";
+        } else {
+          $status = "404 Not Found"; $body = "Not found\n";
+        }
+      } elsif ($path eq "/files/hello.txt") {
+        $body = "Hello from MiniShop public files!\n";
+      } else {
+        $status = "404 Not Found"; $body = "Not found\n";
+      }
+    } elsif ($path eq "/invoice?id=102") {
+      $body = "Invoice #102 (user: apprentice): 12.00 EUR\n";
+    } elsif ($path eq "/invoice?id=101") {
+      if ($cfg{VERIFY_SESSION} eq "on") {
+        $status = "403 Forbidden"; $body = "Blocked: not your invoice\n";
+      } else {
+        $body = "Invoice #101 (user: admin): note = Check /admin with role=admin\n";
+      }
+    } elsif ($path eq "/admin") {
+      if ($cfg{VERIFY_SESSION} eq "on") {
+        $status = "403 Forbidden"; $body = "Blocked: invalid session token\n";
+      } elsif (index($cookie, "role=admin") >= 0) {
+        $body = "ADMIN PANEL UNLOCKED! FLAG{cookies-belong-to-the-client}\n";
+      } else {
+        $status = "403 Forbidden"; $body = "Access denied: admin cookie required\n";
+      }
+    } else {
+      $status = "404 Not Found"; $body = "Not found\n";
+    }
+    my $hdr = "HTTP/1.0 $status\r\nServer: MiniShop/1.0\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n";
+    print $c $hdr . $body;
+    close $c;
+  }
+}
+PL
+  tq_weblab_wait $!
+}
+tq_weblab_python() {
+  [ -z "${TQ_NETLAB_PERL:-}" ] && tq_real_python3 || return 1
+  python3 - "$TQ_PG/weblab/.port" "$TQ_PG/weblab/.pid" "$TQ_PG/weblab/server.conf" </dev/null >/dev/null 2>&1 <<'PY' &
+import os, socket, sys, time
+port_file, pid_file, conf_file = sys.argv[1], sys.argv[2], sys.argv[3]
+srv = None
+port = 18520
+for cand in range(18520, 19490):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.bind(("127.0.0.1", cand))
+        s.listen(16)
+        srv = s
+        port = cand
+        break
+    except OSError:
+        s.close()
+if srv is None:
+    sys.exit(1)
+with open(port_file, "w") as f:
+    f.write(str(port) + "\n")
+with open(pid_file, "w") as f:
+    f.write(str(os.getpid()) + "\n")
+def read_conf():
+    cfg = {"BLOCK_DOTFILES": "off", "BLOCK_TRAVERSAL": "off", "VERIFY_SESSION": "off"}
+    try:
+        with open(conf_file) as f:
+            for ln in f:
+                ln = ln.strip()
+                if "=" in ln:
+                    k, v = ln.split("=", 1)
+                    cfg[k] = v
+    except OSError:
+        pass
+    return cfg
+srv.settimeout(5)
+end = time.time() + 3600
+while time.time() < end:
+    try:
+        c, _ = srv.accept()
+    except socket.timeout:
+        continue
+    except OSError:
+        break
+    try:
+        c.settimeout(2)
+        req = b""
+        while b"\r\n\r\n" not in req and b"\n\n" not in req and len(req) < 8192:
+            chunk = c.recv(4096)
+            if not chunk:
+                break
+            req += chunk
+        lines = req.decode("latin1", "replace").splitlines()
+        first = lines[0] if lines else ""
+        parts = first.split(" ")
+        path = parts[1] if len(parts) > 1 else "/"
+        cookie = ""
+        for h in lines[1:]:
+            if h.lower().startswith("cookie:"):
+                cookie = h[7:]
+        cfg = read_conf()
+        status, body = "200 OK", "MiniShop Home: browse /files/hello.txt or /invoice?id=102\n"
+        if path in ("/", "/index.html"):
+            pass
+        elif path == "/robots.txt":
+            body = "User-agent: *\nDisallow: /admin\nDisallow: /.env\n"
+        elif path == "/.env":
+            if cfg.get("BLOCK_DOTFILES") == "on":
+                status, body = "403 Forbidden", "Blocked: dotfiles are not served\n"
+            else:
+                body = "DB_PASS=summer2026\nAPI_TOKEN=live_9981_leaked\n"
+        elif path.startswith("/files/"):
+            if ".." in path:
+                if cfg.get("BLOCK_TRAVERSAL") == "on":
+                    status, body = "403 Forbidden", "Blocked: path traversal denied\n"
+                elif "vault.txt" in path:
+                    body = "PRIVATE VAULT: FLAG{never-trust-dot-dot-paths}\n"
+                else:
+                    status, body = "404 Not Found", "Not found\n"
+            elif path == "/files/hello.txt":
+                body = "Hello from MiniShop public files!\n"
+            else:
+                status, body = "404 Not Found", "Not found\n"
+        elif path == "/invoice?id=102":
+            body = "Invoice #102 (user: apprentice): 12.00 EUR\n"
+        elif path == "/invoice?id=101":
+            if cfg.get("VERIFY_SESSION") == "on":
+                status, body = "403 Forbidden", "Blocked: not your invoice\n"
+            else:
+                body = "Invoice #101 (user: admin): note = Check /admin with role=admin\n"
+        elif path == "/admin":
+            if cfg.get("VERIFY_SESSION") == "on":
+                status, body = "403 Forbidden", "Blocked: invalid session token\n"
+            elif "role=admin" in cookie:
+                body = "ADMIN PANEL UNLOCKED! FLAG{cookies-belong-to-the-client}\n"
+            else:
+                status, body = "403 Forbidden", "Access denied: admin cookie required\n"
+        else:
+            status, body = "404 Not Found", "Not found\n"
+        hdr = f"HTTP/1.0 {status}\r\nServer: MiniShop/1.0\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n"
+        c.sendall((hdr + body).encode("utf-8"))
+    except OSError:
+        pass
+    finally:
+        c.close()
+PY
+  tq_weblab_wait $!
+}
+
+# Safe local-only (127.0.0.1) self-signed HTTPS server for Level 19 TLS tasks.
+tq_tlslab_stop() {
+  local p
+  p=$(cat "$TQ_PG/netsec/.tlspid" 2>/dev/null)
+  case "$p" in ''|*[!0-9]*) ;; *) kill "$p" 2>/dev/null ;; esac
+  rm -f "$TQ_PG/netsec/.tlspid"
+}
+tq_tlslab_alive() {
+  local p; p=$(cat "$TQ_PG/netsec/.tlspid" 2>/dev/null)
+  case "$p" in ''|*[!0-9]*) return 1 ;; esac
+  kill -0 "$p" 2>/dev/null
+}
+tq_tlslab_port() {
+  local p
+  p=$(cat "$TQ_PG/netsec/.tlsport" 2>/dev/null)
+  case "$p" in ''|*[!0-9]*) echo 18620 ;; *) echo "$p" ;; esac
+}
+tq_tlslab_start() {
+  local d="$TQ_PG/netsec" cand pid tries
+  tq_tlslab_alive && return 0
+  [ -f "$d/tls/server.crt" ] && [ -f "$d/tls/server.key" ] || return 1
+  command -v openssl >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || return 1
+  rm -f "$d/.tlspid"
+  cand=18620
+  while [ "$cand" -lt 18720 ]; do
+    ( cd "$d/tls_root" && exec openssl s_server -accept "127.0.0.1:$cand" \
+        -cert "$d/tls/server.crt" -key "$d/tls/server.key" -WWW \
+        </dev/null >/dev/null 2>&1 ) &
+    pid=$!
+    tries=0
+    while [ "$tries" -lt 25 ]; do
+      kill -0 "$pid" 2>/dev/null || break
+      if curl -sk --max-time 1 "https://127.0.0.1:$cand/index.txt" 2>/dev/null | grep -q "HTTPS OK"; then
+        echo "$cand" > "$d/.tlsport"
+        echo "$pid" > "$d/.tlspid"
+        return 0
+      fi
+      sleep 0.05; tries=$((tries + 1))
+    done
+    kill "$pid" 2>/dev/null
+    cand=$((cand + 1))
+  done
+  [ -f "$d/.tlsport" ] || echo "18620" > "$d/.tlsport"
+  return 1
 }
 
 # Every line typed so far (for the history task).
@@ -7376,7 +7830,490 @@ how) echo "weak_lottery.sh was predicted (flag captured)" ;;
 esac; }
 
 # ===========================================================================
-#  LEVEL 13: Break It, Fix It (Security & Crypto Lab)
+#  LEVEL 13: Glass Rooms & Iron Walls (Containers & Hypervisors)
+# ===========================================================================
+
+tq_setup_isolation() {
+  local d="$TQ_PG/isolation"
+  mkdir -p "$d"
+  [ -f "$d/.made" ] && return 0
+  cat > "$d/leak_test.sh" <<'EOF'
+#!/bin/sh
+echo "Running as: $(whoami)"
+if [ -n "${DEMO_API_KEY:-}" ]; then
+  echo "LEAKED! Saw secret in environment: $DEMO_API_KEY"
+else
+  echo "CONTAINED! No DEMO_API_KEY visible in this clean box."
+fi
+EOF
+  cat > "$d/escape_story.txt" <<'EOF'
++--------------------------------------------------------------------+
+|  CONTAINERS (SHARED KERNEL)      vs.    VMs (HYPERVISOR)           |
++--------------------------------------------------------------------+
+|  [ App A ]   [ App B ]                  [ App A ]     [ App B ]    |
+|  (PID 1!)    (PID 1!)                   [Kernel A]    [Kernel B]   |
+|  =========   =========                  ==========    ==========   |
+|  [  ONE SHARED KERNEL  ]                [      HYPERVISOR      ]   |
+|  [      Hardware       ]                [       Hardware       ]   |
++--------------------------------------------------------------------+
+  - App crash in Container A?  Contained! App B never notices.
+  - Bug in the SHARED KERNEL?  Container escape: host & App B exposed.
+  - Bug in Kernel A inside VM? Still trapped by the Hypervisor wall!
+EOF
+  : > "$d/.made"
+}
+
+tq_L13() { case $1 in
+title) echo "Glass Rooms & Iron Walls" ;;
+tasks) echo "t13_1 t13_2 t13_3 t13_4 t13_5 t13_6 t13_7 t13_8 t13_9 t13_10 t13_11" ;;
+setup) tq_setup_isolation; cd "$TQ_PG/isolation" || return ;;
+intro)
+  tq_banner "LEVEL 13" "GLASS ROOMS & IRON WALLS"
+  tq_art <<'ART'
+
+      [ Process ]    -> your rights only (a thin wall)
+      [ Container ]  -> own view, SHARED kernel (a glass room)
+      [ VM ]         -> own virtual hardware, OWN kernel (an iron wall)
+ART
+  echo
+  tq_max "Sometimes you must run code you don't trust: cloud servers and AI" \
+         "agents do it every minute. The answer is walls around it. First" \
+         "glass rooms (containers), then iron walls (virtual machines)."
+  ;;
+outro)
+  unset DEMO_API_KEY 2>/dev/null || true
+  cat <<'EOF'
+You saw how many programs share your rights, peeked at the kernel's
+walls, kept a secret out of a clean room, learned why containers share a
+kernel and virtual machines don't, checked your own CPU, and picked the
+right wall for each job, AI agents included.
+EOF
+;;
+explore)
+  tq_os 'Apps from the App Store run in a sandbox. System Settings > Privacy & Security shows what each may reach.' \
+        'Apps from Flathub run in a sandbox. `flatpak list` (if you have it) shows them.'
+  tq_os 'UTM and Parallels run whole virtual computers on a Mac.' \
+        'GNOME Boxes or VirtualBox run whole virtual computers on Linux.' ;;
+esac; }
+
+t13_1() { case $1 in
+title) echo "One user, many apps" ;;
+card) tq_card "THE LIMIT OF PERMISSIONS" <<'EOF'
+Permissions keep other users out. But every app **you** start, from the
+browser to an AI agent, runs as you, with all your rights.
+EOF
+;;
+prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
+task) cat <<'EOF'
+How many programs run as you right now? Count them:
+
+      `ps -u "$USER" | wc -l`
+
+  `ps -u "$USER"`   the processes of your user ($USER holds your name)
+  `| wc -l`         count the lines
+EOF
+;;
+check)
+  tq_ran ps && tq_succ && tq_out_re '^ *[0-9]+ *$' && return 0
+  tq_ran ps && tq_succ && tq_out_any && return 0
+  return 1 ;;
+hint1) echo 'ps -u "$USER", then | wc -l.' ;;
+hint2) echo 'Type `ps -u "$USER" | wc -l`.' ;;
+solution) echo 'ps -u "$USER" | wc -l' ;;
+fact) echo 'Every one of them could read all your files. That is why apps get boxes.' ;;
+how) echo "ps listed or counted your processes" ;;
+esac; }
+
+t13_2() { case $1 in
+title) tq_os "PID 1 on your Mac" "The hall of mirrors" ;;
+card)
+  if [ "$TQ_OS" = mac ]; then tq_card "CONTAINERS" <<'EOF'
+A **container** is a normal program that gets a private, pretend view
+of the system: its own files, its own network, even its own PID 1.
+That trick is part of the Linux kernel, not of macOS.
+EOF
+  else tq_card "CONTAINERS: NAMESPACES" <<'EOF'
+A **container** is a normal program that gets a private, pretend view
+of the system: its own files, its own network, its own process list
+where it is PID 1. Linux calls these views **namespaces**.
+EOF
+  fi ;;
+prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
+task)
+  if [ "$TQ_OS" = mac ]; then
+    cat <<'EOF'
+Who is the real PID 1 on your Mac?
+
+      `ps -p 1 -o pid,comm`
+
+  `-p 1`        only process number 1
+  `-o pid,comm` show its PID and its name
+EOF
+  else
+    cat <<'EOF'
+See the namespaces your shell lives in:
+
+      `ls -l /proc/self/ns`
+
+  `/proc/self`   "me": the process that reads it
+  `ns`           its namespaces: mnt (files), net, pid, user...
+EOF
+  fi ;;
+check)
+  if [ "$TQ_OS" = mac ]; then
+    tq_ran ps && tq_out_has "1" && return 0
+  else
+    tq_line_has "/proc/self/ns" && { tq_out_has "pid" || tq_out_has "mnt"; } && return 0
+  fi
+  return 1 ;;
+hint1) tq_os 'ps -p 1 -o pid,comm' 'ls -l and the path /proc/self/ns.' ;;
+hint2) tq_os 'Type `ps -p 1 -o pid,comm`.' 'Type `ls -l /proc/self/ns`.' ;;
+solution) tq_os 'ps -p 1 -o pid,comm' 'ls -l /proc/self/ns' ;;
+fact) tq_os 'launchd: my Mac cousin. Docker on a Mac runs a small Linux in a VM.' \
+            'Each number in brackets is one view. A container gets new ones.' ;;
+how) echo "process namespace links (/proc/self/ns) or PID 1 info was displayed" ;;
+esac; }
+
+t13_3() { case $1 in
+title) echo "Limits" ;;
+card) tq_card "RESOURCE LIMITS" <<'EOF'
+The kernel can also put a cap on how much a group of programs may use:
+CPU, memory, number of processes. So one box can't starve the rest.
+EOF
+;;
+prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
+task)
+  if [ "$TQ_OS" = mac ]; then
+    cat <<'EOF'
+How many processes may one user run at most?
+
+      `sysctl kern.maxprocperuid`
+EOF
+  else
+    cat <<'EOF'
+Which limit group (cgroup) does your shell belong to?
+
+      `cat /proc/self/cgroup`
+
+The long path names your group, often the terminal app you started.
+EOF
+  fi ;;
+check)
+  if [ "$TQ_OS" = mac ]; then
+    tq_ran sysctl && tq_out_has "maxprocperuid" && return 0
+  else
+    tq_line_has "/proc/self/cgroup" && tq_out_any && return 0
+  fi
+  return 1 ;;
+hint1) tq_os 'sysctl and the name kern.maxprocperuid.' 'cat and the path /proc/self/cgroup.' ;;
+hint2) tq_os 'Type `sysctl kern.maxprocperuid`.' 'Type `cat /proc/self/cgroup`.' ;;
+solution) tq_os 'sysctl kern.maxprocperuid' 'cat /proc/self/cgroup' ;;
+fact) tq_os 'A runaway loop cannot start more than that, and freeze your Mac.' \
+            'Containers get a group of their own, with caps on CPU and memory.' ;;
+how) echo "cgroup (Linux) or kernel process limit (macOS) was shown" ;;
+esac; }
+
+t13_4() { case $1 in
+title) tq_os "More limits" "Locked doors" ;;
+prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
+task)
+  if [ "$TQ_OS" = mac ]; then
+    cat <<'EOF'
+And how many files may one process have open at once?
+
+      `sysctl kern.maxfilesperproc`
+EOF
+  else
+    cat <<'EOF'
+Containers can also forbid kernel calls (**seccomp**) and take away
+special powers (**capabilities**). What does your shell have?
+
+      `grep -E "Seccomp|CapEff" /proc/self/status`
+EOF
+  fi ;;
+check)
+  if [ "$TQ_OS" = mac ]; then
+    tq_ran sysctl && tq_out_has "maxfilesperproc" && return 0
+  else
+    { tq_out_has "CapEff" || tq_out_has "Seccomp"; } && return 0
+  fi
+  return 1 ;;
+hint1) tq_os 'sysctl and kern.maxfilesperproc.' 'grep -E, the two words in quotes, then /proc/self/status.' ;;
+hint2) tq_os 'Type `sysctl kern.maxfilesperproc`.' 'Type `grep -E "Seccomp|CapEff" /proc/self/status`.' ;;
+solution) tq_os 'sysctl kern.maxfilesperproc' 'grep -E "Seccomp|CapEff" /proc/self/status' ;;
+fact) tq_os 'Docker and friends just combine views and limits like these.' \
+            'Seccomp 0: no filter. CapEff all zeros: no root powers. A plain user.' ;;
+how) echo "a kernel limit (macOS) or seccomp/capabilities (Linux) were shown" ;;
+esac; }
+
+t13_5() { case $1 in
+title) echo "A secret in the air" ;;
+card) tq_card "THE CLEAN ROOM" <<'EOF'
+Every program you start inherits your environment variables, API keys
+included. Good sandboxes start with a **clean room**: only what is
+handed in exists inside.
+EOF
+;;
+prep)
+  tq_setup_isolation; tq_need_dir "$TQ_PG/isolation"
+  export DEMO_API_KEY="sk-demo-not-real-4242" ;;
+task) cat <<'EOF'
+The game put a fake secret into your environment. See it:
+
+      `echo "$DEMO_API_KEY"`
+EOF
+;;
+check)
+  tq_out_has "sk-demo" && return 0
+  return 1 ;;
+hint1) echo 'echo and the variable in double quotes, with $.' ;;
+hint2) echo 'Type `echo "$DEMO_API_KEY"`.' ;;
+solution) echo 'echo "$DEMO_API_KEY"' ;;
+fact) echo 'Fake, but real keys look just like that.' ;;
+how) echo "the fake key was printed" ;;
+esac; }
+
+t13_6() { case $1 in
+title) echo "It leaks" ;;
+prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation"; export DEMO_API_KEY="sk-demo-not-real-4242" ;;
+task) cat <<'EOF'
+`leak_test.sh` checks whether it can see the secret. Run it normally:
+
+      `bash leak_test.sh`
+EOF
+;;
+check)
+  tq_out_has "LEAKED!" && return 0
+  return 1 ;;
+hint1) echo 'bash and the script name.' ;;
+hint2) echo 'Type `bash leak_test.sh`.' ;;
+solution) echo 'bash leak_test.sh' ;;
+fact) echo 'It got your secret for free, just by being started by you.' ;;
+how) echo "leak_test.sh saw the key" ;;
+esac; }
+
+t13_7() { case $1 in
+title) echo "A clean room" ;;
+prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation"; export DEMO_API_KEY="sk-demo-not-real-4242" ;;
+task) cat <<'EOF'
+Now start it in an empty environment:
+
+      `env -i PATH=/usr/bin:/bin bash leak_test.sh`
+
+  `env -i`              start with no variables at all
+  `PATH=/usr/bin:/bin`  hand in only PATH, so bash finds its commands
+EOF
+;;
+check)
+  if tq_out_has "CONTAINED!"; then unset DEMO_API_KEY 2>/dev/null || true; return 0; fi
+  return 1 ;;
+hint1) echo 'env -i, then PATH=..., then the bash command.' ;;
+hint2) echo 'Type `env -i PATH=/usr/bin:/bin bash leak_test.sh`.' ;;
+solution) echo 'env -i PATH=/usr/bin:/bin bash leak_test.sh' ;;
+fact) echo 'Contained. Good AI agent sandboxes hand in the project folder, and not
+your keys.' ;;
+how) echo "leak_test.sh ran inside env -i without seeing DEMO_API_KEY" ;;
+esac; }
+
+t13_8() { case $1 in
+title) echo "Glass room or iron wall?" ;;
+prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
+task) cat <<'EOF'
+Containers start in a blink because they **share one kernel**. A
+virtual machine brings its own. Read the comparison:
+
+      `cat escape_story.txt`
+EOF
+;;
+check)
+  tq_out_has "SHARED KERNEL" && return 0
+  return 1 ;;
+hint1) echo '`cat` and the file name.' ;;
+hint2) echo 'Type `cat escape_story.txt`.' ;;
+solution) echo 'cat escape_story.txt' ;;
+fact) echo 'One kernel bug can open every glass room at once ("container escape").
+Keeping the kernel updated protects them all.' ;;
+how) echo "escape_story.txt was read" ;;
+esac; }
+
+t13_9() { case $1 in
+title) echo "Can I run virtual machines?" ;;
+card) tq_card "HYPERVISORS" <<EOF
+A **hypervisor** makes virtual hardware, so each **virtual machine**
+boots its own kernel. Clouds run them by the thousand; on your computer,
+apps like $(tq_os "UTM or Parallels" "GNOME Boxes or VirtualBox") do it.
+EOF
+;;
+prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
+task)
+  if [ "$TQ_OS" = mac ]; then
+    cat <<'EOF'
+Does your Mac support the built-in hypervisor? (1 = yes)
+
+      `sysctl kern.hv_support`
+EOF
+  else
+    cat <<'EOF'
+Does your CPU support virtual machines (VT-x on Intel, AMD-V on AMD)?
+
+      `LC_ALL=C lscpu | grep -i -E "model name|virt"`
+
+  `LC_ALL=C`   English output, whatever your language (so grep finds it)
+  `-i -E`      ignore capitals; `|` means "or"
+EOF
+  fi ;;
+check)
+  if [ "$TQ_OS" = mac ]; then
+    tq_ran sysctl && tq_out_has "hv_support" && return 0
+  else
+    { tq_ran lscpu || tq_line_has "/proc/cpuinfo"; } && tq_out_any && return 0
+  fi
+  return 1 ;;
+hint1) tq_os 'sysctl and kern.hv_support.' 'LC_ALL=C lscpu, then | grep -i -E "model name|virt".' ;;
+hint2) tq_os 'Type `sysctl kern.hv_support`.' 'Type `LC_ALL=C lscpu | grep -i -E "model name|virt"`.' ;;
+solution) tq_os 'sysctl kern.hv_support' 'LC_ALL=C lscpu | grep -i -E "model name|virt"' ;;
+fact) echo 'Cloud servers: one machine, many customers, each with its own kernel.' ;;
+how) echo "hardware virtualization support was checked via lscpu or sysctl" ;;
+esac; }
+
+# On a Mac, kern.hv_vmm_present is missing on older systems: hw.model then
+# says it (a virtual Mac calls itself VirtualMac).
+tq_mac_vmm_ok() { sysctl -n kern.hv_vmm_present >/dev/null 2>&1; }
+
+t13_10() { case $1 in
+title) echo "Am I in a VM right now?" ;;
+prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
+task)
+  if [ "$TQ_OS" = mac ] && tq_mac_vmm_ok; then
+    cat <<'EOF'
+Is this Mac real, or a virtual one? (0 = real, 1 = virtual)
+
+      `sysctl kern.hv_vmm_present`
+EOF
+  elif [ "$TQ_OS" = mac ]; then
+    cat <<'EOF'
+Is this Mac real, or a virtual one? Its model name tells:
+
+      `sysctl hw.model`
+
+A virtual Mac calls itself "VirtualMac".
+EOF
+  elif command -v systemd-detect-virt >/dev/null 2>&1; then
+    cat <<'EOF'
+Is this computer real, or a virtual one?
+
+      `systemd-detect-virt`
+
+"none" means real hardware.
+EOF
+  else
+    cat <<'EOF'
+Is this computer real, or a virtual one? Inside a VM, the CPU shows a
+"hypervisor" flag:
+
+      `grep -c hypervisor /proc/cpuinfo`
+
+0 means: no flag, real hardware.
+EOF
+  fi ;;
+check)
+  if [ "$TQ_OS" = mac ]; then
+    tq_ran sysctl && { tq_out_has "hv_vmm_present" || tq_out_has "hw.model"; } && return 0
+  else
+    tq_ran systemd-detect-virt && tq_out_any && return 0
+    tq_line_has "/proc/cpuinfo" && tq_out_any && return 0
+  fi
+  return 1 ;;
+hint1) echo 'Copy the command from the task.' ;;
+hint2) echo "Type \`$(t13_10 solution)\`." ;;
+solution)
+  if [ "$TQ_OS" = mac ] && tq_mac_vmm_ok; then echo 'sysctl kern.hv_vmm_present'
+  elif [ "$TQ_OS" = mac ]; then echo 'sysctl hw.model'
+  elif command -v systemd-detect-virt >/dev/null 2>&1; then echo 'systemd-detect-virt'
+  else echo 'grep -c hypervisor /proc/cpuinfo'
+  fi ;;
+fact) echo 'Some malware checks this too, and plays dead inside researchers'"'"' VMs.' ;;
+how) echo "virtualization status was queried" ;;
+esac; }
+
+t13_11() { case $1 in
+title) echo "Pick the right wall" ;;
+kind) echo quiz ;;
+qmode) echo choice ;;
+flag) echo "FLAG{walls-within-walls}" ;;
+card) tq_card "PROCESS VS CONTAINER VS VM" <<'EOF'
+Faster walls are thinner; thicker walls cost more RAM and boot time.
+Cloud sandboxes even use tiny VMs that start in under a second. Pick
+the right wall for each case.
+EOF
+;;
+task) echo 'Six real-world scenarios. For each, pick the right wall (**a**, **b** or **c**):' ;;
+qn) echo 6 ;;
+q1) cat <<'EOF'
+Search your own notes folder with grep:
+a) Normal process   b) Container   c) VM / Hypervisor
+a
+Trusted local tool working on your own files: a normal process is instant
+and needs no extra layer.
+EOF
+;;
+q2) cat <<'EOF'
+Package a web app so it runs with the same files on laptop and server:
+a) Normal process   b) Container   c) Full desktop VM
+b
+Containers shine at packaging: private filesystem and dependencies,
+milliseconds to start, and tiny memory overhead.
+EOF
+;;
+q3) cat <<'EOF'
+Host two rival banks on one physical cloud server:
+a) Normal process   b) Shared-kernel container   c) VM / Hypervisor
+c
+Untrusted tenants sharing hardware need separate kernels so a bug in one
+tenant's OS cannot escape into the other bank's machine.
+EOF
+;;
+q4) cat <<'EOF'
+Detonate a real suspected virus sample to study what it does:
+a) Normal process   b) Container   c) VM / Hypervisor (no network)
+c
+Real malware analysis needs a separate kernel, snapshots to roll back,
+and no network connection to the outside world.
+EOF
+;;
+q5) if [ "$TQ_OS" = mac ]; then cat <<'EOF'
+Run Linux Docker containers on your Mac:
+a) Normal process   b) Container only   c) Hypervisor VM + Container
+c
+macOS runs the Darwin kernel, not Linux. Docker on a Mac boots a tiny
+Linux VM through macOS's hypervisor first, then runs containers inside it.
+EOF
+else cat <<'EOF'
+Run a program that only exists for Windows on your Linux laptop:
+a) Normal process   b) Container   c) VM / Hypervisor
+c
+A container shares your Linux kernel, so it can only run Linux programs.
+Windows needs its own kernel: a virtual machine.
+EOF
+fi ;;
+q6) cat <<'EOF'
+Let an AI agent install packages and run tests on an untrusted repo:
+a) Bare process   b) Container or micro-VM sandbox   c) chmod 777
+b
+Untrusted code execution should never touch your real home folder or SSH
+keys: put the agent in a container or a tiny-VM sandbox.
+EOF
+;;
+check) return 1 ;;
+hint1) echo 'Ask: is the code trusted? Do you need packaging speed, or a separate kernel?' ;;
+hint2) echo 'Trusted local = process; portable app = container;
+untrusted tenants, malware or another OS kernel = VM; AI = sandbox.' ;;
+solution) echo 'a, b, c, c, c, b' ;;
+how) echo "quiz: six isolation-layer scenarios, each explained, plus FLAG{walls-within-walls}" ;;
+esac; }
+
+# ===========================================================================
+#  LEVEL 14: Break It, Fix It (Security & Crypto Lab)
 # ===========================================================================
 
 tq_setup_cryptolab() {
@@ -7550,12 +8487,12 @@ EOF
   : > "$d/.made"
 }
 
-tq_L13() { case $1 in
+tq_L14() { case $1 in
 title) echo "Break It, Fix It" ;;
-tasks) echo "t13_1 t13_2 t13_3 t13_4 t13_5 t13_6 t13_7 t13_8 t13_9 t13_10 t13_11 t13_12 t13_13 t13_14 t13_15 t13_16 t13_17 t13_18 t13_19 t13_20" ;;
+tasks) echo "t14_1 t14_2 t14_3 t14_4 t14_5 t14_6 t14_7 t14_8 t14_9 t14_10 t14_11 t14_12 t14_13 t14_14 t14_15 t14_16 t14_17 t14_18 t14_19 t14_20" ;;
 setup) tq_setup_cryptolab; tq_make_crack; cd "$TQ_PG/cryptolab" || return ;;
 intro)
-  tq_banner "LEVEL 13" "BREAK IT, FIX IT"
+  tq_banner "LEVEL 14" "BREAK IT, FIX IT"
   tq_pid1 5 hack
   echo
   tq_max "Best way to understand security? Build a weak lock, crack it" \
@@ -7575,7 +8512,7 @@ explore)
         'Check which programs listen for the network: `ss -tlnp` (from Level 11).' ;;
 esac; }
 
-# The cracker for Level 13, shipped ready-made: it is read, then run.
+# The cracker for Level 14, shipped ready-made: it is read, then run.
 tq_make_crack() {
   tq_mkf "$TQ_PG/cryptolab/crack.sh" <<'EOF'
 #!/bin/bash
@@ -7594,7 +8531,7 @@ tq_make_weak() {
   [ -s "$TQ_PG/cryptolab/weak.enc" ] || openssl enc -aes-256-cbc -pbkdf2 -iter 1 -pass pass:apple -in "$TQ_PG/cryptolab/secret_plan.txt" -out "$TQ_PG/cryptolab/weak.enc" 2>/dev/null
 }
 
-t13_1() { case $1 in
+t14_1() { case $1 in
 needs) echo pbkdf2 ;;
 title) echo "A weak lock" ;;
 card) tq_card "STRONG LOCK, WEAK KEY" <<'EOF'
@@ -7634,7 +8571,7 @@ fact) echo 'Nobody breaks AES. Attackers guess the human password instead.' ;;
 how) echo "weak.enc is encrypted and decrypts with password apple (-iter 1)" ;;
 esac; }
 
-t13_2() { case $1 in
+t14_2() { case $1 in
 needs) echo pbkdf2 ;;
 title) echo "Peek inside" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab"; tq_make_weak ;;
@@ -7655,7 +8592,7 @@ fact) echo '"Salted__": the signature openssl puts at the start. The rest is noi
 how) echo "head showed the Salted__ signature" ;;
 esac; }
 
-t13_3() { case $1 in
+t14_3() { case $1 in
 title) echo "A cracker is just a loop" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab"; tq_make_crack ;;
 task) cat <<'EOF'
@@ -7678,7 +8615,7 @@ fact) echo 'Ten lines. That is all a dictionary attack is.' ;;
 how) echo "cat showed crack.sh" ;;
 esac; }
 
-t13_4() { case $1 in
+t14_4() { case $1 in
 needs) echo pbkdf2 ;;
 title) echo "Crack it" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab"; tq_make_weak; tq_make_crack ;;
@@ -7698,7 +8635,7 @@ fact) echo 'A blink. Real attackers test billions of passwords per second.' ;;
 how) echo "crack.sh cracked weak.enc and revealed the flag" ;;
 esac; }
 
-t13_5() { case $1 in
+t14_5() { case $1 in
 needs) echo pbkdf2 ;;
 title) echo "Make guessing expensive" ;;
 card) tq_card "KEY STRETCHING" <<'EOF'
@@ -7727,7 +8664,7 @@ fact) echo 'Did you notice a tiny pause? That pause is the defence.' ;;
 how) echo "slow.enc decrypts with apple at -iter 200000" ;;
 esac; }
 
-t13_6() { case $1 in
+t14_6() { case $1 in
 needs) echo pbkdf2 ;;
 title) echo "Time the attacker" ;;
 prep)
@@ -7750,7 +8687,7 @@ fact) tq_os 'FileVault, the disk encryption of your Mac, slows guesses down like
 how) echo "bench.sh measured the slowdown" ;;
 esac; }
 
-t13_7() { case $1 in
+t14_7() { case $1 in
 needs) echo pbkdf2 ;;
 title) echo "A strong password" ;;
 card) tq_card "ENTROPY" <<'EOF'
@@ -7784,7 +8721,7 @@ fact) echo 'Same lock, better key. How much better? Let'"'"'s measure.' ;;
 how) echo "strong.enc exists and is not locked with apple" ;;
 esac; }
 
-t13_8() { case $1 in
+t14_8() { case $1 in
 title) echo "Measure it" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab" ;;
 task) cat <<'EOF'
@@ -7806,7 +8743,7 @@ fact) echo 'Try `bash entropy_meter.sh apple` some time: INSTANT.' ;;
 how) echo "entropy_meter.sh said STRONG" ;;
 esac; }
 
-t13_9() { case $1 in
+t14_9() { case $1 in
 needs) echo pbkdf2 ;;
 title) echo "Watch the attack fail" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab"; tq_make_crack
@@ -7828,7 +8765,7 @@ for you, a different one for every site.' ;;
 how) echo "crack.sh failed against strong.enc" ;;
 esac; }
 
-t13_10() { case $1 in
+t14_10() { case $1 in
 title) echo "Knock on local doors" ;;
 card) tq_card "PORTS AND BANNERS" <<'EOF'
 Services listen on numbered **ports** (Level 11). Many greet every
@@ -7876,7 +8813,7 @@ doors you don'"'"'t need.' ;;
 how) echo "local 127.0.0.1 port scan read the open banner flag" ;;
 esac; }
 
-t13_11() { case $1 in
+t14_11() { case $1 in
 needs) echo pbkdf2 ;;
 title) echo "A postcard on the wire" ;;
 card) tq_card "OPEN VS ENCRYPTED" <<'EOF'
@@ -7904,7 +8841,7 @@ fact) echo 'Your session token, readable by anyone in the coffee shop.' ;;
 how) echo "the cleartext message was intercepted" ;;
 esac; }
 
-t13_12() { case $1 in
+t14_12() { case $1 in
 needs) echo pbkdf2 ;;
 title) echo "Seal the envelope" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab/wire" ;;
@@ -7933,7 +8870,7 @@ EOF
   chmod +x "$TQ_PG/cryptolab/inject/lookup.sh"
 }
 
-t13_13() { case $1 in
+t14_13() { case $1 in
 title) echo "A dangerous little script" ;;
 card) tq_card "DATA AND CODE" <<'EOF'
 `eval` runs text as a command. If that text comes from a user, the user
@@ -7960,7 +8897,7 @@ fact) echo 'Whatever you type ends up in that eval. Anything at all.' ;;
 how) echo "cat showed the eval in lookup.sh" ;;
 esac; }
 
-t13_14() { case $1 in
+t14_14() { case $1 in
 title) echo "Inject a command" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab/inject"; grep -q eval lookup.sh 2>/dev/null || tq_make_lookup ;;
 task) cat <<'EOF'
@@ -7982,7 +8919,7 @@ fact) echo 'The "name" stole a secret file. Now fix the script.' ;;
 how) echo "lookup.sh was exploited" ;;
 esac; }
 
-t13_15() { case $1 in
+t14_15() { case $1 in
 title) echo "Fix it" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab/inject" ;;
 task) cat <<'EOF'
@@ -8004,7 +8941,7 @@ fact) echo 'Data stays data. Now attack it again.' ;;
 how) echo "lookup.sh uses \$1 and no eval" ;;
 esac; }
 
-t13_16() { case $1 in
+t14_16() { case $1 in
 title) echo "Attack again" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab/inject" ;;
 task) cat <<'EOF'
@@ -8024,7 +8961,7 @@ fact) echo 'The attack is just harmless text now. Defeated.' ;;
 how) echo "the attack printed as text after the fix" ;;
 esac; }
 
-t13_17() { case $1 in
+t14_17() { case $1 in
 title) echo "Audit the shop" ;;
 card) tq_card "DEFENSE IN DEPTH" <<'EOF'
 Real security is layers: tight permissions, strong passwords, no debug
@@ -8049,7 +8986,7 @@ fact) echo 'Three holes. Let'"'"'s close them one by one.' ;;
 how) echo "audit.sh listed the holes" ;;
 esac; }
 
-t13_18() { case $1 in
+t14_18() { case $1 in
 title) echo "Hole 1: the keys" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab/shop" ;;
 task) cat <<'EOF'
@@ -8069,7 +9006,7 @@ fact) echo 'One hole closed.' ;;
 how) echo "shop/.env is -rw-------" ;;
 esac; }
 
-t13_19() { case $1 in
+t14_19() { case $1 in
 title) echo "Hole 2: the chatty app" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab/shop" ;;
 task) cat <<'EOF'
@@ -8089,7 +9026,7 @@ fact) echo 'Two down.' ;;
 how) echo "app.conf says DEBUG_MODE=off" ;;
 esac; }
 
-t13_20() { case $1 in
+t14_20() { case $1 in
 title) echo "Hole 3: the admin password" ;;
 prep) tq_need_dir "$TQ_PG/cryptolab/shop"; tq_find_sha ;;
 task)
@@ -8117,7 +9054,7 @@ how) echo "audit.sh verified all 3 security fixes and awarded FLAG{defender-cert
 esac; }
 
 # ===========================================================================
-#  LEVEL 14: The Virus Lab (Code Execution, Malware & Defenses)
+#  LEVEL 15: The Virus Lab (Code Execution, Malware & Defenses)
 # ===========================================================================
 
 tq_reset_petri() {
@@ -8221,12 +9158,12 @@ EOF
   fi
 }
 
-tq_L14() { case $1 in
+tq_L15() { case $1 in
 title) echo "The Virus Lab" ;;
-tasks) echo "t14_1 t14_2 t14_3 t14_4 t14_5 t14_6 t14_7 t14_8 t14_9 t14_10 t14_11 t14_12 t14_13 t14_14 t14_15 t14_16 t14_17 t14_18 t14_19" ;;
+tasks) echo "t15_1 t15_2 t15_3 t15_4 t15_5 t15_6 t15_7 t15_8 t15_9 t15_10 t15_11 t15_12 t15_13 t15_14 t15_15 t15_16 t15_17 t15_18 t15_19" ;;
 setup) tq_setup_quarantine; cd "$TQ_PG/quarantine" || return ;;
 intro)
-  tq_banner "LEVEL 14" "THE VIRUS LAB"
+  tq_banner "LEVEL 15" "THE VIRUS LAB"
   tq_art <<'ART'
 
          [ untrusted code ]  -->  runs as YOU (no sudo needed!)
@@ -8251,7 +9188,7 @@ explore)
   echo 'Make sure your important files have a backup that is not always plugged in.' ;;
 esac; }
 
-t14_1() { case $1 in
+t15_1() { case $1 in
 title) echo "Read before you run" ;;
 card) tq_card "CODE EXECUTION" <<'EOF'
 Every program you run gets **all your rights**, no sudo needed: it can
@@ -8278,7 +9215,7 @@ fact) echo 'It only reads and prints. (/etc/passwd is the list of user accounts.
 how) echo "blast_radius.sh was read" ;;
 esac; }
 
-t14_2() { case $1 in
+t15_2() { case $1 in
 title) echo "How far can it reach?" ;;
 prep) tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine" ;;
 task) cat <<'EOF'
@@ -8298,7 +9235,7 @@ limits. Malware rarely needs root to steal what is yours.' ;;
 how) echo "blast_radius.sh ran and printed its audit" ;;
 esac; }
 
-t14_3() { case $1 in
+t15_3() { case $1 in
 title) echo "Anatomy of a virus" ;;
 card) tq_card "THE FOUR STAGES" <<'EOF'
 A virus combines four ordinary steps: **1. Entry** (its code runs),
@@ -8329,7 +9266,7 @@ pretends to be useful.' ;;
 how) echo "specimen.sh was read without executing it" ;;
 esac; }
 
-t14_4() { case $1 in
+t15_4() { case $1 in
 title) echo "The petri dish" ;;
 prep) tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine"; tq_reset_petri ;;
 task) cat <<'EOF'
@@ -8349,7 +9286,7 @@ fact) echo 'A loop over three files. Harmless. Let it loose.' ;;
 how) echo "tagger.sh was read" ;;
 esac; }
 
-t14_5() { case $1 in
+t15_5() { case $1 in
 title) echo "Let it spread" ;;
 prep) tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine" ;;
 task) cat <<'EOF'
@@ -8368,7 +9305,7 @@ fact) echo 'Done in a blink. A real virus would not stop at three files.' ;;
 how) echo "tagger.sh stamped petri/*.txt" ;;
 esac; }
 
-t14_6() { case $1 in
+t15_6() { case $1 in
 title) echo "Count the infected" ;;
 prep) tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine"; tq_file_has petri/note3.txt PETRI-TAG || sh tagger.sh >/dev/null 2>&1 ;;
 task) cat <<'EOF'
@@ -8389,7 +9326,7 @@ fact) echo 'file:1 means "one stamp in this file". All three infected.' ;;
 how) echo "grep -c counted the stamps" ;;
 esac; }
 
-t14_7() { case $1 in
+t15_7() { case $1 in
 title) echo "How malware comes back" ;;
 card)
   tq_card "PERSISTENCE" <<EOF
@@ -8417,7 +9354,7 @@ in the background (&). Every time.' ;;
 how) echo "output shows the PERSIST-HOOK line" ;;
 esac; }
 
-t14_8() { case $1 in
+t15_8() { case $1 in
 title) echo "Cut the hook" ;;
 prep) tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine"; tq_file_has sim_bashrc PERSIST-HOOK || tq_reset_sim_bashrc ;;
 task) cat <<'EOF'
@@ -8440,7 +9377,7 @@ fact) echo 'clean.tmp has everything except the hook.' ;;
 how) echo "clean.tmp holds sim_bashrc without the hook" ;;
 esac; }
 
-t14_9() { case $1 in
+t15_9() { case $1 in
 title) echo "Swap it in" ;;
 prep)
   tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine"
@@ -8461,7 +9398,7 @@ fact) echo 'The hook is gone. It will not come back.' ;;
 how) echo "sim_bashrc has no PERSIST-HOOK" ;;
 esac; }
 
-t14_10() { case $1 in
+t15_10() { case $1 in
 title) echo "Which notes?" ;;
 prep) tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine" ;;
 task) cat <<'EOF'
@@ -8481,7 +9418,7 @@ fact) echo 'Three notes, nothing changed yet. Look first, then act.' ;;
 how) echo "the rehearsal loop listed the notes" ;;
 esac; }
 
-t14_11() { case $1 in
+t15_11() { case $1 in
 title) echo "Disinfect the notes" ;;
 prep) tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine"; tq_file_has petri/note1.txt PETRI-TAG || sh tagger.sh >/dev/null 2>&1 ;;
 task) cat <<'EOF'
@@ -8509,7 +9446,7 @@ fact) echo 'The notes are clean, the stamps are gone.' ;;
 how) echo "no PETRI-TAG left in petri/" ;;
 esac; }
 
-t14_12() { case $1 in
+t15_12() { case $1 in
 title) echo "All clear?" ;;
 prep) tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine" ;;
 task) cat <<'EOF'
@@ -8529,7 +9466,7 @@ fact) echo 'The order matters: first cut the way back in, then clean, then check
 how) echo "verify_clean.sh confirmed the lab is clean" ;;
 esac; }
 
-t14_13() { case $1 in
+t15_13() { case $1 in
 title) echo "The execute bit" ;;
 card) tq_card "SHIELDS OF THE SYSTEM" <<'EOF'
 Two simple locks stop many attacks: system programs belong to **root**,
@@ -8556,7 +9493,7 @@ fact) echo '/bin/ls: owned by root, has x. payload.dat: yours, no x.' ;;
 how) echo "ls -l listed /bin/ls and payload.dat" ;;
 esac; }
 
-t14_14() { case $1 in
+t15_14() { case $1 in
 title) echo "Try to run data" ;;
 prep) tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine"; chmod 644 "$TQ_PG/quarantine/payload.dat" ;;
 task) cat <<'EOF'
@@ -8578,7 +9515,7 @@ fact) echo 'No x, no run. The kernel says no.' ;;
 how) echo "the kernel refused to run payload.dat" ;;
 esac; }
 
-t14_15() { case $1 in
+t15_15() { case $1 in
 title) echo "The loophole" ;;
 prep) tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine" ;;
 task) cat <<'EOF'
@@ -8597,7 +9534,7 @@ fact) echo 'It ran! The x bit is a lock, not a wall. Never feed unknown files to
 how) echo "bash ran payload.dat" ;;
 esac; }
 
-t14_16() { case $1 in
+t15_16() { case $1 in
 title) echo "Antivirus: a copy" ;;
 card) tq_card "SIGNATURES" <<'EOF'
 Classic antivirus compares each file's **hash** with a list of known
@@ -8621,7 +9558,7 @@ fact) echo 'Two identical files, two identical hashes. For now.' ;;
 how) echo "specimen_v2.sh exists" ;;
 esac; }
 
-t14_17() { case $1 in
+t15_17() { case $1 in
 title) echo "Change one byte" ;;
 prep) tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine"; [ -f specimen_v2.sh ] || cp specimen.sh specimen_v2.sh ;;
 task) cat <<'EOF'
@@ -8641,7 +9578,7 @@ fact) echo 'Same behaviour, one tiny change. Does the antivirus still know it?' 
 how) echo "specimen_v2.sh differs from specimen.sh" ;;
 esac; }
 
-t14_18() { case $1 in
+t15_18() { case $1 in
 title) echo "Compare the fingerprints" ;;
 prep)
   tq_setup_quarantine; tq_need_dir "$TQ_PG/quarantine"; tq_find_sha
@@ -8667,7 +9604,7 @@ signed a program and how it behaves.' ;;
 how) echo "both specimen.sh and specimen_v2.sh were hashed" ;;
 esac; }
 
-t14_19() { case $1 in
+t15_19() { case $1 in
 title) echo "The shield checklist" ;;
 kind) echo quiz ;;
 qmode) echo choice ;;
@@ -8716,7 +9653,7 @@ You must let an AI agent run tests on untrusted code. What limits damage?
 a) Rename the folder   b) Isolation (container or VM)   c) Turn off logs
 b
 When you have to run untrusted code, permissions alone are not enough --
-you put walls around the process. That is the entire next level!
+you put walls around the process (just like you saw in Level 13!).
 EOF
 ;;
 check) return 1 ;;
@@ -8728,486 +9665,1675 @@ how) echo "quiz: five attack-to-defense decisions, each explained" ;;
 esac; }
 
 # ===========================================================================
-#  LEVEL 15: Glass Rooms & Iron Walls (Containers & Hypervisors)
+#  LEVEL 16: Local Recon & Privilege Traps (Advanced Pentesting)
 # ===========================================================================
 
-tq_setup_isolation() {
-  local d="$TQ_PG/isolation"
-  mkdir -p "$d"
-  [ -f "$d/.made" ] && return 0
-  cat > "$d/leak_test.sh" <<'EOF'
+tq_setup_privesc() {
+  local d="$TQ_PG/privesc"
+  mkdir -p "$d/cronlab" "$d/symlinklab/shared" "$d/wildlab/inbox/vault" "$d/wildlab/public"
+  if [ ! -f "$d/.made" ]; then
+    cat > "$d/cronlab/crontab.txt" <<'EOF'
+# Simulated system schedule (runs every 5 minutes as root)
+*/5 * * * * root /srv/cronlab/nightly.sh
+EOF
+    cat > "$d/cronlab/nightly.clean" <<'EOF'
 #!/bin/sh
-echo "Running as: $(whoami)"
-if [ -n "${DEMO_API_KEY:-}" ]; then
-  echo "LEAKED! Saw secret in environment: $DEMO_API_KEY"
+echo "Nightly backup finished cleanly."
+EOF
+    cp "$d/cronlab/nightly.clean" "$d/cronlab/nightly.sh"
+    chmod 777 "$d/cronlab/nightly.sh"
+    cat > "$d/cronlab/runner.sh" <<'EOF'
+#!/bin/sh
+echo "[SCHEDULER] Running cronlab/nightly.sh with elevated rights..."
+out=$(sh cronlab/nightly.sh 2>&1)
+printf '%s\n' "$out"
+case "$out" in
+  *HIJACKED_BY_ATTACKER*)
+    echo "[ALERT] Injected code executed! FLAG{writable-cron-is-root}" ;;
+esac
+EOF
+    chmod 755 "$d/cronlab/runner.sh"
+
+    cat > "$d/symlinklab/config.conf" <<'EOF'
+ALLOW_ADMIN=no
+MAX_USERS=10
+EOF
+    cat > "$d/symlinklab/logger.sh" <<'EOF'
+#!/bin/sh
+# Vulnerable helper: writes to a fixed path in a shared folder
+# without checking whether app.log is a symbolic link!
+echo "OVERWRITTEN_BY_LOGGER" > symlinklab/shared/app.log
+echo "Logger wrote status to symlinklab/shared/app.log"
+EOF
+    chmod 755 "$d/symlinklab/logger.sh"
+
+    echo "Public release notes." > "$d/wildlab/inbox/z_readme.txt"
+    echo "FLAG{filenames-can-be-flags}" > "$d/wildlab/inbox/vault/secret.txt"
+    cat > "$d/wildlab/publish.sh" <<'EOF'
+#!/bin/sh
+# Vulnerable publisher: uses cp * without -- or ./*
+rm -rf wildlab/public/*
+( cd wildlab/inbox && cp * ../public/ 2>/dev/null || true )
+if [ -f wildlab/public/vault/secret.txt ]; then
+  echo "LEAKED into wildlab/public/vault/secret.txt:"
+  cat wildlab/public/vault/secret.txt
 else
-  echo "CONTAINED! No DEMO_API_KEY visible in this clean box."
+  echo "SAFE: vault/ was NOT copied into public/."
 fi
 EOF
-  cat > "$d/escape_story.txt" <<'EOF'
-+--------------------------------------------------------------------+
-|  CONTAINERS (SHARED KERNEL)      vs.    VMs (HYPERVISOR)           |
-+--------------------------------------------------------------------+
-|  [ App A ]   [ App B ]                  [ App A ]     [ App B ]    |
-|  (PID 1!)    (PID 1!)                   [Kernel A]    [Kernel B]   |
-|  =========   =========                  ==========    ==========   |
-|  [  ONE SHARED KERNEL  ]                [      HYPERVISOR      ]   |
-|  [      Hardware       ]                [       Hardware       ]   |
-+--------------------------------------------------------------------+
-  - App crash in Container A?  Contained! App B never notices.
-  - Bug in the SHARED KERNEL?  Container escape: host & App B exposed.
-  - Bug in Kernel A inside VM? Still trapped by the Hypervisor wall!
-EOF
-  : > "$d/.made"
+    chmod 755 "$d/wildlab/publish.sh"
+    : > "$d/.made"
+  fi
 }
 
-tq_L15() { case $1 in
-title) echo "Glass Rooms & Iron Walls" ;;
-tasks) echo "t15_1 t15_2 t15_3 t15_4 t15_5 t15_6 t15_7 t15_8 t15_9 t15_10 t15_11" ;;
-setup) tq_setup_isolation; cd "$TQ_PG/isolation" || return ;;
+tq_L16() { case $1 in
+title) echo "Local Recon & Privilege Traps" ;;
+tasks) echo "t16_1 t16_2 t16_3 t16_4 t16_5 t16_6 t16_7 t16_8 t16_9 t16_10 t16_11 t16_12" ;;
+setup) tq_setup_privesc; cd "$TQ_PG/privesc" || return ;;
 intro)
-  tq_banner "LEVEL 15" "GLASS ROOMS & IRON WALLS"
+  tq_banner "LEVEL 16" "LOCAL RECON & PRIVILEGE TRAPS"
   tq_art <<'ART'
 
-      [ Process ]    -> your rights only (a thin wall)
-      [ Container ]  -> own view, SHARED kernel (a glass room)
-      [ VM ]         -> own virtual hardware, OWN kernel (an iron wall)
+      [ Low-privilege shell ]  --->  scans for misconfigurations
+         |--> SUID binaries          |--> Writable cron scripts
+         |--> Predictable symlinks   '--> Wildcard flag injection
 ART
   echo
-  tq_max "Sometimes you must run code you don't trust: cloud servers and AI" \
-         "agents do it every minute. The answer is walls around it. First" \
-         "glass rooms (containers), then iron walls (virtual machines)."
+  tq_max "Welcome to Chapter 6! When an attacker gets a normal user shell," \
+         "their next goal is root. Here you'll try four classic local traps" \
+         "in the playground, and learn the one-line fixes that shut them."
   ;;
-outro)
-  unset DEMO_API_KEY 2>/dev/null || true
-  cat <<'EOF'
-You saw how many programs share your rights, peeked at the kernel's
-walls, kept a secret out of a clean room, learned why containers share a
-kernel and virtual machines don't, checked your own CPU, and picked the
-right wall for each job, AI agents included.
+outro) cat <<'EOF'
+You scanned for SUID programs like a real pentester, hijacked and locked
+down a world-writable scheduled script, redirected a naive logger with a
+symlink, and turned `cp *` recursive with a single dash-named file before
+blocking it with `--`. Small script mistakes become root shells -- and
+now you can spot every one of them.
 EOF
 ;;
 explore)
-  tq_os 'Apps from the App Store run in a sandbox. System Settings > Privacy & Security shows what each may reach.' \
-        'Apps from Flathub run in a sandbox. `flatpak list` (if you have it) shows them.'
-  tq_os 'UTM and Parallels run whole virtual computers on a Mac.' \
-        'GNOME Boxes or VirtualBox run whole virtual computers on Linux.' ;;
+  echo 'Check your own SUID programs: `find /usr/bin -perm -4000 2>/dev/null`.'
+  echo 'In your own scripts, always write `cp -- *` or `cp ./*` and `mktemp` for temp files.' ;;
 esac; }
 
-t15_1() { case $1 in
-title) echo "One user, many apps" ;;
-card) tq_card "THE LIMIT OF PERMISSIONS" <<'EOF'
-Permissions keep other users out. But every app **you** start, from the
-browser to an AI agent, runs as you, with all your rights.
+t16_1() { case $1 in
+title) echo "The attacker's first scan" ;;
+card) tq_card "SUID PROGRAMS" <<'EOF'
+Normally a program runs with **your** rights. A program with the **SUID**
+bit (`4000`, shown as `s` in `ls -l`) runs with its **owner's** rights --
+often `root`. Attackers scan for SUID binaries in their first 10 seconds.
 EOF
 ;;
-prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
+prep) tq_setup_privesc; tq_need_dir "$TQ_PG/privesc" ;;
 task) cat <<'EOF'
-How many programs run as you right now? Count them:
+Find real SUID programs in `/usr/bin` on your own machine (read-only):
 
-      `ps -u "$USER" | wc -l`
+      `find /usr/bin -perm -4000 2>/dev/null | head -n 8`
 
-  `ps -u "$USER"`   the processes of your user ($USER holds your name)
-  `| wc -l`         count the lines
+  `find /usr/bin`   search inside /usr/bin
+  `-perm -4000`     only files with the SUID bit set
+  `2>/dev/null`     hide "permission denied" noise
+  `| head -n 8`     show the first 8 results
 EOF
 ;;
 check)
-  tq_ran ps && tq_succ && tq_out_re '^ *[0-9]+ *$' && return 0
-  tq_ran ps && tq_succ && tq_out_any && return 0
+  tq_ran find && tq_line_has "4000" && return 0
   return 1 ;;
-hint1) echo 'ps -u "$USER", then | wc -l.' ;;
-hint2) echo 'Type `ps -u "$USER" | wc -l`.' ;;
-solution) echo 'ps -u "$USER" | wc -l' ;;
-fact) echo 'Every one of them could read all your files. That is why apps get boxes.' ;;
-how) echo "ps listed or counted your processes" ;;
+hint1) echo 'find /usr/bin, -perm -4000, 2>/dev/null, then | head -n 8.' ;;
+hint2) echo 'Type `find /usr/bin -perm -4000 2>/dev/null | head -n 8`.' ;;
+solution) echo 'find /usr/bin -perm -4000 2>/dev/null | head -n 8' ;;
+fact) echo 'Tools like `passwd` need SUID to update passwords. A stray SUID bit on
+an editor or shell hands root to any local user.' ;;
+how) echo "find searched /usr/bin for SUID (-perm -4000) binaries" ;;
 esac; }
 
-t15_2() { case $1 in
-title) tq_os "PID 1 on your Mac" "The hall of mirrors" ;;
-card)
-  if [ "$TQ_OS" = mac ]; then tq_card "CONTAINERS" <<'EOF'
-A **container** is a normal program that gets a private, pretend view
-of the system: its own files, its own network, even its own PID 1.
-That trick is part of the Linux kernel, not of macOS.
-EOF
-  else tq_card "CONTAINERS: NAMESPACES" <<'EOF'
-A **container** is a normal program that gets a private, pretend view
-of the system: its own files, its own network, its own process list
-where it is PID 1. Linux calls these views **namespaces**.
-EOF
-  fi ;;
-prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
-task)
-  if [ "$TQ_OS" = mac ]; then
-    cat <<'EOF'
-Who is the real PID 1 on your Mac?
-
-      `ps -p 1 -o pid,comm`
-
-  `-p 1`        only process number 1
-  `-o pid,comm` show its PID and its name
-EOF
-  else
-    cat <<'EOF'
-See the namespaces your shell lives in:
-
-      `ls -l /proc/self/ns`
-
-  `/proc/self`   "me": the process that reads it
-  `ns`           its namespaces: mnt (files), net, pid, user...
-EOF
-  fi ;;
-check)
-  if [ "$TQ_OS" = mac ]; then
-    tq_ran ps && tq_out_has "1" && return 0
-  else
-    tq_line_has "/proc/self/ns" && { tq_out_has "pid" || tq_out_has "mnt"; } && return 0
-  fi
-  return 1 ;;
-hint1) tq_os 'ps -p 1 -o pid,comm' 'ls -l and the path /proc/self/ns.' ;;
-hint2) tq_os 'Type `ps -p 1 -o pid,comm`.' 'Type `ls -l /proc/self/ns`.' ;;
-solution) tq_os 'ps -p 1 -o pid,comm' 'ls -l /proc/self/ns' ;;
-fact) tq_os 'launchd: my Mac cousin. Docker on a Mac runs a small Linux in a VM.' \
-            'Each number in brackets is one view. A container gets new ones.' ;;
-how) echo "process namespace links (/proc/self/ns) or PID 1 info was displayed" ;;
-esac; }
-
-t15_3() { case $1 in
-title) echo "Limits" ;;
-card) tq_card "RESOURCE LIMITS" <<'EOF'
-The kernel can also put a cap on how much a group of programs may use:
-CPU, memory, number of processes. So one box can't starve the rest.
-EOF
-;;
-prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
-task)
-  if [ "$TQ_OS" = mac ]; then
-    cat <<'EOF'
-How many processes may one user run at most?
-
-      `sysctl kern.maxprocperuid`
-EOF
-  else
-    cat <<'EOF'
-Which limit group (cgroup) does your shell belong to?
-
-      `cat /proc/self/cgroup`
-
-The long path names your group, often the terminal app you started.
-EOF
-  fi ;;
-check)
-  if [ "$TQ_OS" = mac ]; then
-    tq_ran sysctl && tq_out_has "maxprocperuid" && return 0
-  else
-    tq_line_has "/proc/self/cgroup" && tq_out_any && return 0
-  fi
-  return 1 ;;
-hint1) tq_os 'sysctl and the name kern.maxprocperuid.' 'cat and the path /proc/self/cgroup.' ;;
-hint2) tq_os 'Type `sysctl kern.maxprocperuid`.' 'Type `cat /proc/self/cgroup`.' ;;
-solution) tq_os 'sysctl kern.maxprocperuid' 'cat /proc/self/cgroup' ;;
-fact) tq_os 'A runaway loop cannot start more than that, and freeze your Mac.' \
-            'Containers get a group of their own, with caps on CPU and memory.' ;;
-how) echo "cgroup (Linux) or kernel process limit (macOS) was shown" ;;
-esac; }
-
-t15_4() { case $1 in
-title) tq_os "More limits" "Locked doors" ;;
-prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
-task)
-  if [ "$TQ_OS" = mac ]; then
-    cat <<'EOF'
-And how many files may one process have open at once?
-
-      `sysctl kern.maxfilesperproc`
-EOF
-  else
-    cat <<'EOF'
-Containers can also forbid kernel calls (**seccomp**) and take away
-special powers (**capabilities**). What does your shell have?
-
-      `grep -E "Seccomp|CapEff" /proc/self/status`
-EOF
-  fi ;;
-check)
-  if [ "$TQ_OS" = mac ]; then
-    tq_ran sysctl && tq_out_has "maxfilesperproc" && return 0
-  else
-    { tq_out_has "CapEff" || tq_out_has "Seccomp"; } && return 0
-  fi
-  return 1 ;;
-hint1) tq_os 'sysctl and kern.maxfilesperproc.' 'grep -E, the two words in quotes, then /proc/self/status.' ;;
-hint2) tq_os 'Type `sysctl kern.maxfilesperproc`.' 'Type `grep -E "Seccomp|CapEff" /proc/self/status`.' ;;
-solution) tq_os 'sysctl kern.maxfilesperproc' 'grep -E "Seccomp|CapEff" /proc/self/status' ;;
-fact) tq_os 'Docker and friends just combine views and limits like these.' \
-            'Seccomp 0: no filter. CapEff all zeros: no root powers. A plain user.' ;;
-how) echo "a kernel limit (macOS) or seccomp/capabilities (Linux) were shown" ;;
-esac; }
-
-t15_5() { case $1 in
-title) echo "A secret in the air" ;;
-card) tq_card "THE CLEAN ROOM" <<'EOF'
-Every program you start inherits your environment variables, API keys
-included. Good sandboxes start with a **clean room**: only what is
-handed in exists inside.
+t16_2() { case $1 in
+title) echo "Spot a writable scheduled job" ;;
+card) tq_card "SCHEDULED JOBS (CRON)" <<'EOF'
+Systems run scheduled scripts on a timer, often as `root`. If a normal
+user can **write** to one of those scripts, they can slip in their own
+command and wait for the next run.
 EOF
 ;;
 prep)
-  tq_setup_isolation; tq_need_dir "$TQ_PG/isolation"
-  export DEMO_API_KEY="sk-demo-not-real-4242" ;;
+  tq_setup_privesc; tq_need_dir "$TQ_PG/privesc"
+  if ! tq_has "$TQ_SOLVED" t16_5; then chmod 777 "$TQ_PG/privesc/cronlab/nightly.sh" 2>/dev/null; fi ;;
 task) cat <<'EOF'
-The game put a fake secret into your environment. See it:
+Check the permissions of our practice scheduled script:
 
-      `echo "$DEMO_API_KEY"`
+      `ls -l cronlab/nightly.sh`
+
+Look at the last three permission letters (`rwx` for "others").
 EOF
 ;;
 check)
-  tq_out_has "sk-demo" && return 0
+  tq_ran ls && tq_out_has "nightly.sh" && return 0
   return 1 ;;
-hint1) echo 'echo and the variable in double quotes, with $.' ;;
-hint2) echo 'Type `echo "$DEMO_API_KEY"`.' ;;
-solution) echo 'echo "$DEMO_API_KEY"' ;;
-fact) echo 'Fake, but real keys look just like that.' ;;
-how) echo "the fake key was printed" ;;
+hint1) echo 'ls -l and the path cronlab/nightly.sh.' ;;
+hint2) echo 'Type `ls -l cronlab/nightly.sh`.' ;;
+solution) echo 'ls -l cronlab/nightly.sh' ;;
+fact) echo 'World-writable (`rwxrwxrwx`) on a scheduled script is an open door.' ;;
+how) echo "ls -l inspected cronlab/nightly.sh permissions" ;;
 esac; }
 
-t15_6() { case $1 in
-title) echo "It leaks" ;;
-prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation"; export DEMO_API_KEY="sk-demo-not-real-4242" ;;
+t16_3() { case $1 in
+title) echo "Hijack the scheduled script" ;;
+prep)
+  tq_setup_privesc; tq_need_dir "$TQ_PG/privesc"
+  chmod 777 "$TQ_PG/privesc/cronlab/nightly.sh" 2>/dev/null ;;
 task) cat <<'EOF'
-`leak_test.sh` checks whether it can see the secret. Run it normally:
+Because anyone can edit `cronlab/nightly.sh`, append a harmless marker
+line to it, just like an attacker planting a payload:
 
-      `bash leak_test.sh`
+      `echo 'echo HIJACKED_BY_ATTACKER' >> cronlab/nightly.sh`
+
+  `echo '...'`   the command line to add (single quotes keep it literal)
+  `>>`           append to the end of the file without erasing it
 EOF
 ;;
 check)
-  tq_out_has "LEAKED!" && return 0
+  grep -q "HIJACKED_BY_ATTACKER" "$TQ_PG/privesc/cronlab/nightly.sh" 2>/dev/null && return 0
   return 1 ;;
-hint1) echo 'bash and the script name.' ;;
-hint2) echo 'Type `bash leak_test.sh`.' ;;
-solution) echo 'bash leak_test.sh' ;;
-fact) echo 'It got your secret for free, just by being started by you.' ;;
-how) echo "leak_test.sh saw the key" ;;
+hint1) echo "Use echo with single quotes and >> into cronlab/nightly.sh." ;;
+hint2) echo "Type \`echo 'echo HIJACKED_BY_ATTACKER' >> cronlab/nightly.sh\`." ;;
+solution) echo "echo 'echo HIJACKED_BY_ATTACKER' >> cronlab/nightly.sh" ;;
+fact) echo 'No password, no sudo -- one loose permission gave you code execution.' ;;
+how) echo "cronlab/nightly.sh contains HIJACKED_BY_ATTACKER" ;;
 esac; }
 
-t15_7() { case $1 in
-title) echo "A clean room" ;;
-prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation"; export DEMO_API_KEY="sk-demo-not-real-4242" ;;
+t16_4() { case $1 in
+title) echo "Watch the scheduler run it" ;;
+prep)
+  tq_setup_privesc; tq_need_dir "$TQ_PG/privesc"
+  grep -q "HIJACKED_BY_ATTACKER" "$TQ_PG/privesc/cronlab/nightly.sh" 2>/dev/null ||
+    echo 'echo HIJACKED_BY_ATTACKER' >> "$TQ_PG/privesc/cronlab/nightly.sh" ;;
 task) cat <<'EOF'
-Now start it in an empty environment:
+Now trigger our simulated scheduler `cronlab/runner.sh` to see what
+happens on the next tick:
 
-      `env -i PATH=/usr/bin:/bin bash leak_test.sh`
-
-  `env -i`              start with no variables at all
-  `PATH=/usr/bin:/bin`  hand in only PATH, so bash finds its commands
+      `bash cronlab/runner.sh`
 EOF
 ;;
 check)
-  if tq_out_has "CONTAINED!"; then unset DEMO_API_KEY 2>/dev/null || true; return 0; fi
+  if tq_out_has "HIJACKED_BY_ATTACKER" && tq_out_has "FLAG{writable-cron-is-root}"; then
+    tq_flag "FLAG{writable-cron-is-root}"
+    return 0
+  fi
   return 1 ;;
-hint1) echo 'env -i, then PATH=..., then the bash command.' ;;
-hint2) echo 'Type `env -i PATH=/usr/bin:/bin bash leak_test.sh`.' ;;
-solution) echo 'env -i PATH=/usr/bin:/bin bash leak_test.sh' ;;
-fact) echo 'Contained. Good AI agent sandboxes hand in the project folder, and not
-your keys.' ;;
-how) echo "leak_test.sh ran inside env -i without seeing DEMO_API_KEY" ;;
+hint1) echo 'bash and the script path cronlab/runner.sh.' ;;
+hint2) echo 'Type `bash cronlab/runner.sh`.' ;;
+solution) echo 'bash cronlab/runner.sh' ;;
+fact) echo 'On a real server, that one line could create a new root account.' ;;
+how) echo "cronlab/runner.sh executed the hijacked line and printed FLAG{writable-cron-is-root}" ;;
 esac; }
 
-t15_8() { case $1 in
-title) echo "Glass room or iron wall?" ;;
-prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
+t16_5() { case $1 in
+title) echo "Lock down the scheduled script" ;;
+prep) tq_setup_privesc; tq_need_dir "$TQ_PG/privesc" ;;
 task) cat <<'EOF'
-Containers start in a blink because they **share one kernel**. A
-virtual machine brings its own. Read the comparison:
+Fix the hole: lock `cronlab/nightly.sh` to `755` so only the owner can
+write to it (others can only read and run):
 
-      `cat escape_story.txt`
+      `chmod 755 cronlab/nightly.sh`
+
+  `7`   owner: read + write + run (rwx)
+  `5`   group: read + run (r-x)
+  `5`   others: read + run (r-x)
 EOF
 ;;
 check)
-  tq_out_has "SHARED KERNEL" && return 0
+  local p; p=$(tq_perm "$TQ_PG/privesc/cronlab/nightly.sh")
+  case "$p" in -rwxr-xr-x|-rwx------|-rwxr-x---) return 0 ;; esac
   return 1 ;;
-hint1) echo '`cat` and the file name.' ;;
-hint2) echo 'Type `cat escape_story.txt`.' ;;
-solution) echo 'cat escape_story.txt' ;;
-fact) echo 'One kernel bug can open every glass room at once ("container escape").
-Keeping the kernel updated protects them all.' ;;
-how) echo "escape_story.txt was read" ;;
+hint1) echo 'chmod 755 and the file cronlab/nightly.sh.' ;;
+hint2) echo 'Type `chmod 755 cronlab/nightly.sh`.' ;;
+solution) echo 'chmod 755 cronlab/nightly.sh' ;;
+fact) echo 'Defenders also check the parent folder: a writable folder lets an
+attacker delete and replace even a 755 script.' ;;
+how) echo "cronlab/nightly.sh permissions tightened to 755 (not group/world writable)" ;;
 esac; }
 
-t15_9() { case $1 in
-title) echo "Can I run virtual machines?" ;;
-card) tq_card "HYPERVISORS" <<EOF
-A **hypervisor** makes virtual hardware, so each **virtual machine**
-boots its own kernel. Clouds run them by the thousand; on your computer,
-apps like $(tq_os "UTM or Parallels" "GNOME Boxes or VirtualBox") do it.
+t16_6() { case $1 in
+title) echo "Read the symlink trap" ;;
+card) tq_card "SYMLINK ATTACKS" <<'EOF'
+A **symbolic link** (`ln -s`) is a shortcut pointing to another file.
+If a privileged helper writes to a fixed path in a shared folder like
+`/tmp`, an attacker can plant a symlink there and hijack the write!
 EOF
 ;;
-prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
+prep) tq_setup_privesc; tq_need_dir "$TQ_PG/privesc" ;;
+task) cat <<'EOF'
+Read our practice helper `symlinklab/logger.sh` to see where it writes:
+
+      `cat symlinklab/logger.sh`
+EOF
+;;
+check)
+  tq_out_has "app.log" && return 0
+  return 1 ;;
+hint1) echo 'cat and the file symlinklab/logger.sh.' ;;
+hint2) echo 'Type `cat symlinklab/logger.sh`.' ;;
+solution) echo 'cat symlinklab/logger.sh' ;;
+fact) echo 'It blindly writes to `shared/app.log` without checking for a link.' ;;
+how) echo "symlinklab/logger.sh was read" ;;
+esac; }
+
+t16_7() { case $1 in
+title) echo "Plant a symlink" ;;
+prep)
+  tq_setup_privesc; tq_need_dir "$TQ_PG/privesc"
+  rm -f "$TQ_PG/privesc/symlinklab/shared/app.log" ;;
+task) cat <<'EOF'
+Point `symlinklab/shared/app.log` at `../config.conf` using a symlink:
+
+      `ln -sf ../config.conf symlinklab/shared/app.log`
+
+  `ln -s`             create a symbolic link (shortcut)
+  `-f`                replace any existing file at that name
+  `../config.conf`    the target (relative to `shared/`)
+  `symlinklab/...`    where to place the link
+EOF
+;;
+check)
+  [ -L "$TQ_PG/privesc/symlinklab/shared/app.log" ] && return 0
+  return 1 ;;
+hint1) echo 'ln -sf ../config.conf symlinklab/shared/app.log.' ;;
+hint2) echo 'Type `ln -sf ../config.conf symlinklab/shared/app.log`.' ;;
+solution) echo 'ln -sf ../config.conf symlinklab/shared/app.log' ;;
+fact) echo 'The link looks like a log file, but writes to it will hit `config.conf`.' ;;
+how) echo "symlinklab/shared/app.log is a symbolic link" ;;
+esac; }
+
+t16_8() { case $1 in
+title) echo "Watch the redirect hit config" ;;
+prep)
+  tq_setup_privesc; tq_need_dir "$TQ_PG/privesc"
+  [ -L "$TQ_PG/privesc/symlinklab/shared/app.log" ] ||
+    ln -sf ../config.conf "$TQ_PG/privesc/symlinklab/shared/app.log"
+  printf 'ALLOW_ADMIN=no\nMAX_USERS=10\n' > "$TQ_PG/privesc/symlinklab/config.conf" ;;
+task) cat <<'EOF'
+Run the logger and then check `symlinklab/config.conf` in one line:
+
+      `bash symlinklab/logger.sh && cat symlinklab/config.conf`
+
+  `&&`   run the second command right after the first succeeds
+EOF
+;;
+check)
+  tq_out_has "OVERWRITTEN_BY_LOGGER" &&
+    grep -q "OVERWRITTEN_BY_LOGGER" "$TQ_PG/privesc/symlinklab/config.conf" && return 0
+  return 1 ;;
+hint1) echo 'bash symlinklab/logger.sh && cat symlinklab/config.conf.' ;;
+hint2) echo 'Type `bash symlinklab/logger.sh && cat symlinklab/config.conf`.' ;;
+solution) echo 'bash symlinklab/logger.sh && cat symlinklab/config.conf' ;;
+fact) echo 'Real scripts defend with `mktemp` (random private files) or reject
+symlinks (`[ -L "$file" ]`). Linux also enables `fs.protected_symlinks`.' ;;
+how) echo "logger.sh followed the symlink and overwrote config.conf" ;;
+esac; }
+
+t16_9() { case $1 in
+title) echo "Read the wildcard script" ;;
+card) tq_card "WILDCARD INJECTION" <<'EOF'
+When a script runs `cp * ../public/`, the shell replaces `*` with every
+file name BEFORE `cp` starts. What if an attacker drops a file named
+`-R`? `cp` mistakes the file name for an option!
+EOF
+;;
+prep) tq_setup_privesc; tq_need_dir "$TQ_PG/privesc" ;;
+task) cat <<'EOF'
+Read `wildlab/publish.sh`, which tries to copy only top-level files from
+`wildlab/inbox/` (and skip the `vault/` folder):
+
+      `cat wildlab/publish.sh`
+EOF
+;;
+check)
+  tq_out_has "cp *" && return 0
+  return 1 ;;
+hint1) echo 'cat and wildlab/publish.sh.' ;;
+hint2) echo 'Type `cat wildlab/publish.sh`.' ;;
+solution) echo 'cat wildlab/publish.sh' ;;
+fact) echo 'On Linux servers, the same bug in `tar *` (`--checkpoint-action=exec`)
+has led to real root compromises.' ;;
+how) echo "wildlab/publish.sh was read" ;;
+esac; }
+
+t16_10() { case $1 in
+title) echo "Drop a flag-shaped filename" ;;
+prep)
+  tq_setup_privesc; tq_need_dir "$TQ_PG/privesc"
+  rm -f "$TQ_PG/privesc/wildlab/inbox/-R" ;;
+task) cat <<'EOF'
+Create an empty file named `-R` inside `wildlab/inbox/`. Without `--`,
+`touch` would think `-R` is an option!
+
+      `touch -- wildlab/inbox/-R`
+
+  `touch`   create an empty file
+  `--`      stop reading options: everything after this is a filename
+EOF
+;;
+check)
+  [ -f "$TQ_PG/privesc/wildlab/inbox/-R" ] && return 0
+  return 1 ;;
+hint1) echo 'touch, a space, --, a space, then wildlab/inbox/-R.' ;;
+hint2) echo 'Type `touch -- wildlab/inbox/-R`.' ;;
+solution) echo 'touch -- wildlab/inbox/-R' ;;
+fact) echo 'Now `cp * ../public/` will expand to `cp -R vault z_readme.txt ...`!' ;;
+how) echo "file wildlab/inbox/-R exists" ;;
+esac; }
+
+t16_11() { case $1 in
+title) echo "Trigger the wildcard leak" ;;
+prep)
+  tq_setup_privesc; tq_need_dir "$TQ_PG/privesc"
+  [ -f "$TQ_PG/privesc/wildlab/inbox/-R" ] || touch -- "$TQ_PG/privesc/wildlab/inbox/-R" ;;
+task) cat <<'EOF'
+Run the vulnerable publisher and see what happens to `vault/secret.txt`:
+
+      `bash wildlab/publish.sh`
+EOF
+;;
+check)
+  if tq_out_has "FLAG{filenames-can-be-flags}" && [ -f "$TQ_PG/privesc/wildlab/public/vault/secret.txt" ]; then
+    tq_flag "FLAG{filenames-can-be-flags}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'bash and wildlab/publish.sh.' ;;
+hint2) echo 'Type `bash wildlab/publish.sh`.' ;;
+solution) echo 'bash wildlab/publish.sh' ;;
+fact) echo 'One empty file named `-R` turned a plain copy into a recursive leak.' ;;
+how) echo "publish.sh leaked vault/secret.txt via -R wildcard injection (FLAG{filenames-can-be-flags})" ;;
+esac; }
+
+t16_12() { case $1 in
+title) echo "Defend with double dash" ;;
+prep)
+  tq_setup_privesc; tq_need_dir "$TQ_PG/privesc"
+  [ -f "$TQ_PG/privesc/wildlab/inbox/-R" ] || touch -- "$TQ_PG/privesc/wildlab/inbox/-R" ;;
+task) cat <<'EOF'
+Replace `cp *` with `cp -- *` so `cp` never treats a filename as a flag,
+save it as `wildlab/publish_fixed.sh`, and run it (two lines, `\` joins):
+
+  `sed 's/cp \*/cp -- \*/' wildlab/publish.sh > wildlab/publish_fixed.sh \`
+  `  && bash wildlab/publish_fixed.sh`
+
+  `sed 's/old/new/'`   replace `cp *` with `cp -- *` (`\*` = literal `*`)
+  `> ...fixed.sh`      write the patched script
+  `&& bash ...`        test it right away
+EOF
+;;
+check)
+  grep -qE 'cp -- \*|cp \./\*' "$TQ_PG/privesc/wildlab/publish_fixed.sh" 2>/dev/null &&
+    [ ! -f "$TQ_PG/privesc/wildlab/public/vault/secret.txt" ] &&
+    tq_out_has "SAFE:" && return 0
+  return 1 ;;
+hint1) echo 'Use sed to turn cp * into cp -- *, save to publish_fixed.sh, then run it.' ;;
+hint2) cat <<'EOF'
+Type (on one line or joined with `\`):
+  `sed 's/cp \*/cp -- \*/' wildlab/publish.sh > wildlab/publish_fixed.sh \`
+  `  && bash wildlab/publish_fixed.sh`
+EOF
+;;
+solution) echo "sed 's/cp \*/cp -- \*/' wildlab/publish.sh > wildlab/publish_fixed.sh && bash wildlab/publish_fixed.sh" ;;
+fact) echo 'Always write `cp -- *` or `cp ./*` in scripts. One `--` shuts down
+the entire wildcard-injection attack class.' ;;
+how) echo "patched script uses cp -- * (or cp ./*) and kept vault/secret.txt out of public/" ;;
+esac; }
+
+# ===========================================================================
+#  LEVEL 17: Web & HTTP Exploitation (Localhost Lab)
+# ===========================================================================
+
+tq_reset_webconf() {
+  local d="$TQ_PG/weblab"
+  mkdir -p "$d"
+  cat > "$d/server.conf" <<'EOF'
+BLOCK_DOTFILES=off
+BLOCK_TRAVERSAL=off
+VERIFY_SESSION=off
+EOF
+}
+
+tq_setup_weblab() {
+  local d="$TQ_PG/weblab"
+  mkdir -p "$d"
+  [ -f "$d/server.conf" ] || tq_reset_webconf
+  tq_weblab_start
+}
+
+tq_L17() { case $1 in
+title) echo "Web & HTTP Exploitation" ;;
+tasks) echo "t17_1 t17_2 t17_3 t17_4 t17_5 t17_6 t17_7 t17_8 t17_9 t17_10 t17_11" ;;
+setup) tq_setup_weblab; cd "$TQ_PG/weblab" || return ;;
+intro)
+  tq_banner "LEVEL 17" "WEB & HTTP EXPLOITATION"
+  tq_art <<'ART'
+
+      [ curl ]  ---- HTTP on 127.0.0.1 ---->  [ MiniShop/1.0 ]
+                 headers · /.env · ../ · IDOR · forged cookie
+ART
+  echo
+  tq_max "Most modern attacks target web apps. The game started a tiny" \
+         "vulnerable web server on 127.0.0.1 (your machine only). You'll" \
+         "exploit four classic web flaws with curl, patch them, and re-test!"
+  ;;
+outro)
+  tq_weblab_stop
+  cat <<'EOF'
+You fingerprinted HTTP headers, read `robots.txt`, pulled an exposed
+`.env`, escaped the web root with `../` path traversal, read someone
+else's invoice (IDOR), forged an admin cookie, and then flipped all three
+server-side switches and proved every attack now gets `403 Forbidden`.
+EOF
+;;
+explore)
+  echo 'See the headers of a real site: `curl -sI https://example.com` (read-only).'
+  echo 'Look for security headers like `Strict-Transport-Security` and `Content-Security-Policy`.' ;;
+esac; }
+
+t17_1() { case $1 in
+title) echo "Read the HTTP headers" ;;
+card) tq_card "HTTP HEADERS" <<'EOF'
+Every web response starts with hidden **headers**: status (`200 OK`),
+server software, and security rules. Attackers read headers first to
+learn what software is running.
+EOF
+;;
+prep) tq_setup_weblab; tq_need_dir "$TQ_PG/weblab" ;;
+needs) echo weblab ;;
+task)
+  local p; p=$(tq_weblab_port)
+  cat <<EOF
+Fetch our local target's home page WITH its response headers:
+
+      \`curl -s -i http://127.0.0.1:$p/\`
+
+  \`curl\`   talk to a web server from the terminal
+  \`-s\`     silent: hide the download progress meter
+  \`-i\`     include the HTTP headers before the body
+EOF
+  ;;
+check)
+  tq_ran curl && tq_out_has "Server:" && tq_out_has "200 OK" && return 0
+  return 1 ;;
+hint1) echo 'curl -s -i followed by the local URL shown above.' ;;
+hint2)
+  local p; p=$(tq_weblab_port)
+  echo "Type \`curl -s -i http://127.0.0.1:$p/\`." ;;
+solution) echo 'curl -s -i "http://127.0.0.1:$(cat .port)/"' ;;
+fact) echo '`Server: MiniShop/1.0` hands attackers the software name and version.' ;;
+how) echo "curl -i fetched HTTP headers from the local web server" ;;
+esac; }
+
+t17_2() { case $1 in
+title) echo "Peek at robots.txt" ;;
+card) tq_card "ROBOTS.TXT" <<'EOF'
+Websites use `robots.txt` to ask search engines which URLs to skip.
+It is completely public -- so attackers read it first as a map of
+hidden admin panels and sensitive files!
+EOF
+;;
+prep) tq_setup_weblab; tq_need_dir "$TQ_PG/weblab" ;;
+needs) echo weblab ;;
+task)
+  local p; p=$(tq_weblab_port)
+  cat <<EOF
+Request \`/robots.txt\` from the local server:
+
+      \`curl -s http://127.0.0.1:$p/robots.txt\`
+EOF
+  ;;
+check)
+  tq_ran curl && tq_out_has "Disallow:" && return 0
+  return 1 ;;
+hint1) echo 'curl -s and the /robots.txt URL.' ;;
+hint2)
+  local p; p=$(tq_weblab_port)
+  echo "Type \`curl -s http://127.0.0.1:$p/robots.txt\`." ;;
+solution) echo 'curl -s "http://127.0.0.1:$(cat .port)/robots.txt"' ;;
+fact) echo '`robots.txt` is a polite note, not a lock. Never list secrets there.' ;;
+how) echo "curl read /robots.txt revealing /admin and /.env" ;;
+esac; }
+
+t17_3() { case $1 in
+title) echo "Grab the exposed .env" ;;
+prep)
+  tq_setup_weblab; tq_need_dir "$TQ_PG/weblab"
+  tq_reset_webconf ;;
+needs) echo weblab ;;
+task)
+  local p; p=$(tq_weblab_port)
+  cat <<EOF
+Someone deployed the whole folder -- \`.env\` included -- into the web
+root! Try requesting \`/.env\` directly:
+
+      \`curl -s http://127.0.0.1:$p/.env\`
+EOF
+  ;;
+check)
+  tq_ran curl && tq_out_has "API_TOKEN" && return 0
+  return 1 ;;
+hint1) echo 'curl -s and the /.env URL.' ;;
+hint2)
+  local p; p=$(tq_weblab_port)
+  echo "Type \`curl -s http://127.0.0.1:$p/.env\`." ;;
+solution) echo 'curl -s "http://127.0.0.1:$(cat .port)/.env"' ;;
+fact) echo 'Bots scan every new server on the internet for `/.env` and `/.git`
+within minutes. Keep secrets outside the web root.' ;;
+how) echo "curl fetched the exposed /.env file" ;;
+esac; }
+
+t17_4() { case $1 in
+title) echo "Escape with path traversal" ;;
+card) tq_card "PATH TRAVERSAL (../)" <<'EOF'
+If a server joins `/files/` with your URL without checking for `..`, an
+attacker can climb **out** of the public folder and read private files
+on the machine!
+EOF
+;;
+prep)
+  tq_setup_weblab; tq_need_dir "$TQ_PG/weblab"
+  tq_reset_webconf ;;
+needs) echo weblab ;;
+task)
+  local p; p=$(tq_weblab_port)
+  cat <<EOF
+Climb one folder above \`/files/\` to read \`vault.txt\`. Pass
+\`--path-as-is\` so curl does not simplify \`..\` before sending:
+
+      \`curl -s --path-as-is http://127.0.0.1:$p/files/../vault.txt\`
+
+  \`--path-as-is\`   send \`..\` untouched in the HTTP request
+EOF
+  ;;
+check)
+  if tq_ran curl && tq_out_has "FLAG{never-trust-dot-dot-paths}"; then
+    tq_flag "FLAG{never-trust-dot-dot-paths}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'curl -s --path-as-is and /files/../vault.txt.' ;;
+hint2)
+  local p; p=$(tq_weblab_port)
+  echo "Type \`curl -s --path-as-is http://127.0.0.1:$p/files/../vault.txt\`." ;;
+solution) echo 'curl -s --path-as-is "http://127.0.0.1:$(cat .port)/files/../vault.txt"' ;;
+fact) echo 'Real traversal bugs let attackers read `/etc/passwd`, SSH keys and
+source code. Servers must resolve the real path and check its prefix.' ;;
+how) echo "path traversal read vault.txt (FLAG{never-trust-dot-dot-paths})" ;;
+esac; }
+
+t17_5() { case $1 in
+title) echo "Your own invoice (IDOR setup)" ;;
+card) tq_card "BROKEN ACCESS CONTROL (IDOR)" <<'EOF'
+Many apps fetch records by a number in the URL, like `/invoice?id=102`.
+If the server forgets to check **who** owns record `101`, changing one
+digit opens another user's private data!
+EOF
+;;
+prep)
+  tq_setup_weblab; tq_need_dir "$TQ_PG/weblab"
+  tq_reset_webconf ;;
+needs) echo weblab ;;
+task)
+  local p; p=$(tq_weblab_port)
+  cat <<EOF
+First fetch your own invoice (\`id=102\`). Quotes protect the \`?\` from
+the shell:
+
+      \`curl -s "http://127.0.0.1:$p/invoice?id=102"\`
+EOF
+  ;;
+check)
+  tq_ran curl && tq_out_has "Invoice #102" && return 0
+  return 1 ;;
+hint1) echo 'Wrap the URL with ?id=102 in double quotes.' ;;
+hint2)
+  local p; p=$(tq_weblab_port)
+  echo "Type \`curl -s \"http://127.0.0.1:$p/invoice?id=102\"\`." ;;
+solution) echo 'curl -s "http://127.0.0.1:$(cat .port)/invoice?id=102"' ;;
+fact) echo 'Sequential IDs (101, 102, 103...) are easy to guess. Let us try 101.' ;;
+how) echo "curl fetched invoice #102" ;;
+esac; }
+
+t17_6() { case $1 in
+title) echo "Read another user's invoice" ;;
+prep)
+  tq_setup_weblab; tq_need_dir "$TQ_PG/weblab"
+  tq_reset_webconf ;;
+needs) echo weblab ;;
+task)
+  local p; p=$(tq_weblab_port)
+  cat <<EOF
+Now change \`102\` to \`101\` and see if the server checks ownership:
+
+      \`curl -s "http://127.0.0.1:$p/invoice?id=101"\`
+EOF
+  ;;
+check)
+  tq_ran curl && tq_out_has "Invoice #101" && return 0
+  return 1 ;;
+hint1) echo 'Same command as before, with id=101.' ;;
+hint2)
+  local p; p=$(tq_weblab_port)
+  echo "Type \`curl -s \"http://127.0.0.1:$p/invoice?id=101\"\`." ;;
+solution) echo 'curl -s "http://127.0.0.1:$(cat .port)/invoice?id=101"' ;;
+fact) echo 'That is an IDOR bug -- number 1 on the OWASP Top 10 web risks. Every
+endpoint must verify the logged-in user owns the requested item.' ;;
+how) echo "curl fetched admin's invoice #101 via IDOR" ;;
+esac; }
+
+t17_7() { case $1 in
+title) echo "Forge an admin cookie" ;;
+card) tq_card "NEVER TRUST CLIENT COOKIES" <<'EOF'
+Websites send cookies to your browser, and your browser sends them back
+on every click. Remember Level 7 ("never trust the client")? Anyone can
+rewrite a cookie with one flag!
+EOF
+;;
+prep)
+  tq_setup_weblab; tq_need_dir "$TQ_PG/weblab"
+  tq_reset_webconf ;;
+needs) echo weblab ;;
+task)
+  local p; p=$(tq_weblab_port)
+  cat <<EOF
+Invoice #101 hinted at \`/admin\` with \`role=admin\`. Send that forged
+cookie with \`curl -b\`:
+
+      \`curl -s -b "role=admin" http://127.0.0.1:$p/admin\`
+
+  \`-b "role=admin"\`   send a Cookie header with this value
+EOF
+  ;;
+check)
+  if tq_ran curl && tq_out_has "FLAG{cookies-belong-to-the-client}"; then
+    tq_flag "FLAG{cookies-belong-to-the-client}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'curl -s -b "role=admin" followed by the /admin URL.' ;;
+hint2)
+  local p; p=$(tq_weblab_port)
+  echo "Type \`curl -s -b \"role=admin\" http://127.0.0.1:$p/admin\`." ;;
+solution) echo 'curl -s -b "role=admin" "http://127.0.0.1:$(cat .port)/admin"' ;;
+fact) echo 'Real apps store roles on the server and give browsers a random,
+unguessable (or signed) session token -- never plain `role=admin`.' ;;
+how) echo "forged role=admin cookie unlocked /admin (FLAG{cookies-belong-to-the-client})" ;;
+esac; }
+
+t17_8() { case $1 in
+title) echo "Inspect the server config" ;;
+prep)
+  tq_setup_weblab; tq_need_dir "$TQ_PG/weblab"
+  tq_reset_webconf ;;
+task) cat <<'EOF'
+Now switch hats to defender. Read the server's live switches:
+
+      `cat server.conf`
+EOF
+;;
+check)
+  tq_out_has "BLOCK_TRAVERSAL=off" && return 0
+  return 1 ;;
+hint1) echo 'cat and server.conf.' ;;
+hint2) echo 'Type `cat server.conf`.' ;;
+solution) echo 'cat server.conf' ;;
+fact) echo 'The server reads `server.conf` on every request. Let us harden it.' ;;
+how) echo "server.conf was read" ;;
+esac; }
+
+t17_9() { case $1 in
+title) echo "Patch the web server" ;;
+prep) tq_setup_weblab; tq_need_dir "$TQ_PG/weblab" ;;
+task) cat <<'EOF'
+Turn all three server-side defenses **on** using `printf` (joined with `\`):
+
+  `printf '%s\n' "BLOCK_DOTFILES=on" "BLOCK_TRAVERSAL=on" \`
+  `  "VERIFY_SESSION=on" > server.conf`
+
+  `printf '%s\n' A B C`   print each string on its own line
+  `> server.conf`         save the hardened config
+EOF
+;;
+check)
+  grep -q "^BLOCK_DOTFILES=on$" "$TQ_PG/weblab/server.conf" 2>/dev/null &&
+    grep -q "^BLOCK_TRAVERSAL=on$" "$TQ_PG/weblab/server.conf" 2>/dev/null &&
+    grep -q "^VERIFY_SESSION=on$" "$TQ_PG/weblab/server.conf" 2>/dev/null && return 0
+  return 1 ;;
+hint1) echo 'Write all three =on lines into server.conf with printf.' ;;
+hint2) cat <<'EOF'
+Type:
+  `printf '%s\n' "BLOCK_DOTFILES=on" "BLOCK_TRAVERSAL=on" \`
+  `  "VERIFY_SESSION=on" > server.conf`
+EOF
+;;
+solution) echo "printf '%s\n' \"BLOCK_DOTFILES=on\" \"BLOCK_TRAVERSAL=on\" \"VERIFY_SESSION=on\" > server.conf" ;;
+fact) echo 'All three switches are live. Now attack your own fixes to be sure!' ;;
+how) echo "server.conf enabled BLOCK_DOTFILES, BLOCK_TRAVERSAL and VERIFY_SESSION" ;;
+esac; }
+
+t17_10() { case $1 in
+title) echo "Re-test path traversal" ;;
+prep)
+  tq_setup_weblab; tq_need_dir "$TQ_PG/weblab"
+  printf '%s\n' "BLOCK_DOTFILES=on" "BLOCK_TRAVERSAL=on" "VERIFY_SESSION=on" > "$TQ_PG/weblab/server.conf" ;;
+needs) echo weblab ;;
+task)
+  local p; p=$(tq_weblab_port)
+  cat <<EOF
+Re-run the \`../\` path traversal attack with \`-i\` to check the status:
+
+      \`curl -s -i --path-as-is http://127.0.0.1:$p/files/../vault.txt\`
+EOF
+  ;;
+check)
+  tq_ran curl && tq_out_has "403" && ! tq_out_has "FLAG{" && return 0
+  return 1 ;;
+hint1) echo 'curl -s -i --path-as-is and /files/../vault.txt.' ;;
+hint2)
+  local p; p=$(tq_weblab_port)
+  echo "Type \`curl -s -i --path-as-is http://127.0.0.1:$p/files/../vault.txt\`." ;;
+solution) echo 'curl -s -i --path-as-is "http://127.0.0.1:$(cat .port)/files/../vault.txt"' ;;
+fact) echo '`403 Forbidden` -- the vault is sealed.' ;;
+how) echo "path traversal returned 403 Forbidden after patching" ;;
+esac; }
+
+t17_11() { case $1 in
+title) echo "Re-test forged admin cookie" ;;
+prep)
+  tq_setup_weblab; tq_need_dir "$TQ_PG/weblab"
+  printf '%s\n' "BLOCK_DOTFILES=on" "BLOCK_TRAVERSAL=on" "VERIFY_SESSION=on" > "$TQ_PG/weblab/server.conf" ;;
+needs) echo weblab ;;
+task)
+  local p; p=$(tq_weblab_port)
+  cat <<EOF
+Re-run the forged admin cookie against \`/admin\` with \`-i\`:
+
+      \`curl -s -i -b "role=admin" http://127.0.0.1:$p/admin\`
+EOF
+  ;;
+check)
+  if tq_ran curl && tq_out_has "403" && ! tq_out_has "FLAG{"; then
+    tq_weblab_stop
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'curl -s -i -b "role=admin" and the /admin URL.' ;;
+hint2)
+  local p; p=$(tq_weblab_port)
+  echo "Type \`curl -s -i -b \"role=admin\" http://127.0.0.1:$p/admin\`." ;;
+solution) echo 'curl -s -i -b "role=admin" "http://127.0.0.1:$(cat .port)/admin"' ;;
+fact) echo 'Attack, patch, verify: that is how real pentesters close a finding.' ;;
+how) echo "forged admin cookie returned 403 Forbidden after patching" ;;
+esac; }
+
+# ===========================================================================
+#  LEVEL 18: Terminal & Supply-Chain Traps (Advanced Pentesting)
+# ===========================================================================
+
+tq_make_tarslip() {
+  local out=$1
+  if [ -z "${TQ_NETLAB_PYTHON:-}" ] && command -v perl >/dev/null 2>&1; then
+    perl - "$out" <<'PL'
+use strict; use warnings;
+my $out = shift;
+sub tar_entry {
+  my ($name, $data) = @_;
+  my $size = length($data);
+  my $hdr = pack("a100 a8 a8 a8 a12 a12 a8 a1 a100 a6 a2 a32 a32 a8 a8 a155 a12",
+    $name, "0000644\0", "0000000\0", "0000000\0",
+    sprintf("%011o\0", $size), sprintf("%011o\0", time),
+    "        ", "0", "", "ustar\0", "00", "root", "root",
+    "0000000\0", "0000000\0", "", "");
+  my $sum = 0; $sum += ord($_) for split //, $hdr;
+  substr($hdr, 148, 8) = sprintf("%06o\0 ", $sum);
+  my $pad = (512 - ($size % 512)) % 512;
+  return $hdr . $data . ("\0" x $pad);
+}
+open(my $fh, '>:raw', $out) or exit 1;
+print $fh tar_entry("readme.txt", "Update v2.1\n");
+print $fh tar_entry("../../evil_hook.sh", "# Attacker tried to write outside!\n");
+print $fh ("\0" x 1024);
+close $fh;
+PL
+  elif tq_real_python3; then
+    python3 - "$out" <<'PY'
+import io, sys, tarfile
+with tarfile.open(sys.argv[1], "w") as tf:
+    for name, data in [("readme.txt", b"Update v2.1\n"),
+                       ("../../evil_hook.sh", b"# Attacker tried to write outside!\n")]:
+        ti = tarfile.TarInfo(name)
+        ti.size = len(data)
+        ti.mode = 0o644
+        tf.addfile(ti, io.BytesIO(data))
+PY
+  fi
+}
+
+tq_setup_supply() {
+  local d="$TQ_PG/supply"
+  mkdir -p "$d/ssh_demo" "$d/signlab"
+  if [ ! -f "$d/.made" ]; then
+    printf '#!/bin/sh\necho "EXFIL_SECRETS: FLAG{cat-v-reveals-hidden-bytes}" #\r\033[K# Safe helper script -- does nothing bad\necho "Hello from helper!"\n' \
+      > "$d/sneaky_install.sh"
+    tq_make_tarslip "$d/update.tar"
+    cat > "$d/ssh_demo/id_demo" <<'EOF'
+-----BEGIN OPENSSH PRIVATE KEY-----
+DEMO-ONLY-NOT-A-REAL-PRIVATE-KEY
+If others can read this file, they can log in as you!
+-----END OPENSSH PRIVATE KEY-----
+EOF
+    chmod 644 "$d/ssh_demo/id_demo"
+    cat > "$d/ssh_demo/authorized_keys" <<'EOF'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemoAliceKey0000000000000000000000 alice@laptop
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemoRogueKey9999999999999999999999 rogue-backdoor@attacker
+EOF
+    printf 'MiniApp v2.4 - official release payload\n' > "$d/signlab/release.txt"
+    printf 'MiniApp v2.4 - official release payload\n# sneaky one-line backdoor\n' \
+      > "$d/signlab/release_tampered.txt"
+    if command -v openssl >/dev/null 2>&1; then
+      openssl genrsa -out "$d/signlab/private.pem" 2048 >/dev/null 2>&1
+      openssl rsa -in "$d/signlab/private.pem" -pubout -out "$d/signlab/public.pem" >/dev/null 2>&1
+    fi
+    : > "$d/.made"
+  fi
+}
+
+tq_L18() { case $1 in
+title) echo "Terminal & Supply-Chain Traps" ;;
+tasks) echo "t18_1 t18_2 t18_3 t18_4 t18_5 t18_6 t18_7 t18_8 t18_9 t18_10 t18_11" ;;
+setup) tq_setup_supply; cd "$TQ_PG/supply" || return ;;
+intro)
+  tq_banner "LEVEL 18" "TERMINAL & SUPPLY-CHAIN TRAPS"
+  tq_art <<'ART'
+
+      [ Innocent file? ]  -->  hidden escape bytes (`cat -v`)
+      [ Innocent .tar? ]  -->  `../../` Tar Slip (`tar -tf`)
+      [ SSH & releases ]  -->  keys, backdoors & signatures (`openssl`)
+ART
+  echo
+  tq_max "Even reading a file or unpacking a download can be a trap! Here" \
+         "you'll unmask hidden terminal bytes, catch a poisoned archive," \
+         "audit SSH keys, and prove why digital signatures beat plain hashes."
+  ;;
+outro) cat <<'EOF'
+You exposed invisible terminal escape codes with `cat -v`, caught a Tar
+Slip archive with `tar -tf` before unpacking it, locked an SSH private
+key and evicted a rogue `authorized_keys` backdoor, and signed and
+verified a release with public-key cryptography.
+EOF
+;;
+explore)
+  echo 'Check your real SSH folder (if you have one): `ls -la ~/.ssh` (keys should be 600).'
+  echo 'Before unpacking any downloaded `.tar.gz`, always preview it with `tar -tf FILE`.' ;;
+esac; }
+
+t18_1() { case $1 in
+title) echo "The innocent-looking script" ;;
+card) tq_card "TERMINAL ESCAPE INJECTION" <<'EOF'
+Your terminal obeys invisible **escape codes** (colour, move cursor,
+erase line). An attacker can hide a malicious command right in front of
+a harmless comment so plain `cat` hides it from your eyes!
+EOF
+;;
+prep) tq_setup_supply; tq_need_dir "$TQ_PG/supply" ;;
+task) cat <<'EOF'
+Read `sneaky_install.sh` the normal way with `cat`:
+
+      `cat sneaky_install.sh`
+
+Watch closely: it looks completely harmless!
+EOF
+;;
+check)
+  tq_ran cat && tq_line_has "sneaky_install.sh" && ! tq_line_opt v && return 0
+  return 1 ;;
+hint1) echo 'Plain `cat sneaky_install.sh` (without -v yet).' ;;
+hint2) echo 'Type `cat sneaky_install.sh`.' ;;
+solution) echo 'cat sneaky_install.sh' ;;
+fact) echo 'Looks clean, right? Your terminal obeyed a hidden cursor-reset code!' ;;
+how) echo "sneaky_install.sh was viewed with plain cat" ;;
+esac; }
+
+t18_2() { case $1 in
+title) echo "Unmask the hidden bytes" ;;
+prep) tq_setup_supply; tq_need_dir "$TQ_PG/supply" ;;
+task) cat <<'EOF'
+Now inspect the **exact same file** with `cat -v`, which prints hidden
+control bytes as visible symbols instead of obeying them:
+
+      `cat -v sneaky_install.sh`
+
+  `-v`   show non-printing characters (`^M`, `^[` = escape) literally
+EOF
+;;
+check)
+  if tq_ran cat && tq_line_opt v && tq_out_has "FLAG{cat-v-reveals-hidden-bytes}"; then
+    tq_flag "FLAG{cat-v-reveals-hidden-bytes}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'cat -v and sneaky_install.sh.' ;;
+hint2) echo 'Type `cat -v sneaky_install.sh`.' ;;
+solution) echo 'cat -v sneaky_install.sh' ;;
+fact) echo 'A carriage return (`^M`) plus erase-line (`^[[K`) hid the whole command!
+Use `cat -v` or `less` when checking untrusted scripts or logs.' ;;
+how) echo "cat -v revealed the hidden escape bytes and FLAG{cat-v-reveals-hidden-bytes}" ;;
+esac; }
+
+t18_3() { case $1 in
+title) echo "Inspect an archive before unpacking" ;;
+card) tq_card "TAR SLIP (ARCHIVE TRAVERSAL)" <<'EOF'
+A `.tar` archive stores a path for every file inside it. Attackers pack
+entries like `../../.bashrc` hoping an unpacker writes **outside** your
+folder. Always list an archive before extracting it!
+EOF
+;;
+prep)
+  tq_setup_supply; tq_need_dir "$TQ_PG/supply"
+  [ -f "$TQ_PG/supply/update.tar" ] || tq_make_tarslip "$TQ_PG/supply/update.tar" ;;
+task) cat <<'EOF'
+List what is inside `update.tar` WITHOUT unpacking it:
+
+      `tar -tf update.tar`
+
+  `tar`           archive tool
+  `-t`            list (table of contents) only -- extracts nothing
+  `-f update.tar` which archive file to inspect
+EOF
+;;
+check)
+  tq_ran tar && tq_out_has "evil_hook.sh" && return 0
+  return 1 ;;
+hint1) echo 'tar -tf followed by update.tar.' ;;
+hint2) echo 'Type `tar -tf update.tar`.' ;;
+solution) echo 'tar -tf update.tar' ;;
+fact) echo 'Spotted `../../evil_hook.sh`! Never unpack an archive that climbs out.' ;;
+how) echo "tar -tf listed the traversal entry inside update.tar" ;;
+esac; }
+
+t18_4() { case $1 in
+title) echo "Trash the poisoned archive" ;;
+prep)
+  tq_setup_supply; tq_need_dir "$TQ_PG/supply"
+  [ -f "$TQ_PG/supply/update.tar" ] || tq_make_tarslip "$TQ_PG/supply/update.tar" ;;
+task) cat <<'EOF'
+Delete the poisoned `update.tar` instead of unpacking it:
+
+      `rm update.tar`
+EOF
+;;
+check)
+  [ ! -e "$TQ_PG/supply/update.tar" ] && return 0
+  return 1 ;;
+hint1) echo 'rm and update.tar.' ;;
+hint2) echo 'Type `rm update.tar`.' ;;
+solution) echo 'rm update.tar' ;;
+fact) echo 'Modern `tar` strips `../` by default, but many zip libraries and web
+uploaders still fall for Zip/Tar Slip.' ;;
+how) echo "update.tar was deleted" ;;
+esac; }
+
+t18_5() { case $1 in
+title) echo "Audit SSH key permissions" ;;
+card) tq_card "SSH KEYS" <<'EOF'
+SSH lets you log in to servers with a **private key** (secret on your
+computer) and a **public key** (copied to servers). If other users can
+read your private key, they can impersonate you everywhere!
+EOF
+;;
+prep)
+  tq_setup_supply; tq_need_dir "$TQ_PG/supply"
+  if ! tq_has "$TQ_SOLVED" t18_6; then chmod 644 "$TQ_PG/supply/ssh_demo/id_demo" 2>/dev/null; fi ;;
+task) cat <<'EOF'
+List our practice SSH folder `ssh_demo` with permissions:
+
+      `ls -la ssh_demo`
+EOF
+;;
+check)
+  tq_ran ls && tq_out_has "id_demo" && tq_out_has "authorized_keys" && return 0
+  return 1 ;;
+hint1) echo 'ls -la and ssh_demo.' ;;
+hint2) echo 'Type `ls -la ssh_demo`.' ;;
+solution) echo 'ls -la ssh_demo' ;;
+fact) echo '`id_demo` is `rw-r--r--` (readable by everyone). Real `ssh` refuses
+to use any private key with loose permissions.' ;;
+how) echo "ls -la inspected ssh_demo" ;;
+esac; }
+
+t18_6() { case $1 in
+title) echo "Lock the private key" ;;
+prep) tq_setup_supply; tq_need_dir "$TQ_PG/supply" ;;
+task) cat <<'EOF'
+Lock `ssh_demo/id_demo` to `600` (owner read and write only):
+
+      `chmod 600 ssh_demo/id_demo`
+EOF
+;;
+check)
+  [ "$(tq_perm "$TQ_PG/supply/ssh_demo/id_demo")" = "-rw-------" ] && return 0
+  return 1 ;;
+hint1) echo 'chmod 600 and ssh_demo/id_demo.' ;;
+hint2) echo 'Type `chmod 600 ssh_demo/id_demo`.' ;;
+solution) echo 'chmod 600 ssh_demo/id_demo' ;;
+fact) echo 'For real keys, also set a passphrase (`ssh-keygen -t ed25519`) so a
+stolen key file is still useless without it.' ;;
+how) echo "ssh_demo/id_demo permissions set to 600" ;;
+esac; }
+
+t18_7() { case $1 in
+title) echo "Hunt for an SSH backdoor" ;;
+card) tq_card "AUTHORIZED_KEYS PERSISTENCE" <<'EOF'
+Anyone whose public key sits in `~/.ssh/authorized_keys` can log in to
+your account with no password. Attackers often append their own key
+there so they can return silently anytime!
+EOF
+;;
+prep)
+  tq_setup_supply; tq_need_dir "$TQ_PG/supply"
+  if ! tq_has "$TQ_SOLVED" t18_8; then
+    cat > "$TQ_PG/supply/ssh_demo/authorized_keys" <<'EOF'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemoAliceKey0000000000000000000000 alice@laptop
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemoRogueKey9999999999999999999999 rogue-backdoor@attacker
+EOF
+  fi ;;
+task) cat <<'EOF'
+Inspect `ssh_demo/authorized_keys` to see whose keys are trusted:
+
+      `cat ssh_demo/authorized_keys`
+EOF
+;;
+check)
+  tq_out_has "rogue-backdoor@attacker" && return 0
+  return 1 ;;
+hint1) echo 'cat and ssh_demo/authorized_keys.' ;;
+hint2) echo 'Type `cat ssh_demo/authorized_keys`.' ;;
+solution) echo 'cat ssh_demo/authorized_keys' ;;
+fact) echo 'Checking `authorized_keys` is step one after any server intrusion.' ;;
+how) echo "authorized_keys was inspected and rogue-backdoor@attacker spotted" ;;
+esac; }
+
+t18_8() { case $1 in
+title) echo "Evict the rogue SSH key" ;;
+prep)
+  tq_setup_supply; tq_need_dir "$TQ_PG/supply"
+  grep -q "alice@laptop" "$TQ_PG/supply/ssh_demo/authorized_keys" 2>/dev/null ||
+    cat > "$TQ_PG/supply/ssh_demo/authorized_keys" <<'EOF'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemoAliceKey0000000000000000000000 alice@laptop
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemoRogueKey9999999999999999999999 rogue-backdoor@attacker
+EOF
+;;
+task) cat <<'EOF'
+Remove the `rogue-backdoor` line with `grep -v`, then swap in the clean
+file (joined across two lines with `\`):
+
+  `grep -v rogue-backdoor ssh_demo/authorized_keys > ssh_demo/auth.tmp \`
+  `  && mv ssh_demo/auth.tmp ssh_demo/authorized_keys`
+
+  `grep -v WORD`   keep every line that does NOT match WORD
+  `> ... && mv`    write to a temp file first, then replace the original
+EOF
+;;
+check)
+  ! grep -q "rogue-backdoor" "$TQ_PG/supply/ssh_demo/authorized_keys" 2>/dev/null &&
+    grep -q "alice@laptop" "$TQ_PG/supply/ssh_demo/authorized_keys" 2>/dev/null && return 0
+  return 1 ;;
+hint1) echo 'Use grep -v rogue-backdoor into a temp file, then mv it back.' ;;
+hint2) cat <<'EOF'
+Type:
+  `grep -v rogue-backdoor ssh_demo/authorized_keys > ssh_demo/auth.tmp \`
+  `  && mv ssh_demo/auth.tmp ssh_demo/authorized_keys`
+EOF
+;;
+solution) echo 'grep -v rogue-backdoor ssh_demo/authorized_keys > ssh_demo/auth.tmp && mv ssh_demo/auth.tmp ssh_demo/authorized_keys' ;;
+fact) echo 'Backdoor evicted, and Alice still has access.' ;;
+how) echo "rogue-backdoor removed from ssh_demo/authorized_keys while keeping alice@laptop" ;;
+esac; }
+
+t18_9() { case $1 in
+title) echo "Sign a software release" ;;
+card) tq_card "DIGITAL SIGNATURES" <<'EOF'
+A plain SHA-256 hash catches accidental damage -- but if an attacker
+hacks a download server, they can replace **both** the file and its
+hash! A **digital signature** needs the author's secret private key.
+EOF
+;;
+prep) tq_setup_supply; tq_need_dir "$TQ_PG/supply" ;;
+task) cat <<'EOF'
+Sign `signlab/release.txt` with the author's private key:
+
+  `openssl dgst -sha256 -sign signlab/private.pem \`
+  `  -out signlab/release.sig signlab/release.txt`
+
+  `dgst -sha256`             hash the file with SHA-256
+  `-sign signlab/private.pem`  sign that hash using the secret private key
+  `-out signlab/release.sig`   save the signature to this file
+EOF
+;;
+check)
+  [ -s "$TQ_PG/supply/signlab/release.sig" ] && return 0
+  return 1 ;;
+hint1) echo 'openssl dgst -sha256 -sign private.pem, -out release.sig, release.txt.' ;;
+hint2) cat <<'EOF'
+Type:
+  `openssl dgst -sha256 -sign signlab/private.pem \`
+  `  -out signlab/release.sig signlab/release.txt`
+EOF
+;;
+solution) echo 'openssl dgst -sha256 -sign signlab/private.pem -out signlab/release.sig signlab/release.txt' ;;
+fact) echo 'Only someone holding `private.pem` can create a matching signature.' ;;
+how) echo "signlab/release.sig was created with openssl dgst -sign" ;;
+esac; }
+
+t18_10() { case $1 in
+title) echo "Verify the genuine release" ;;
+prep)
+  tq_setup_supply; tq_need_dir "$TQ_PG/supply"
+  [ -s "$TQ_PG/supply/signlab/release.sig" ] ||
+    openssl dgst -sha256 -sign "$TQ_PG/supply/signlab/private.pem" \
+      -out "$TQ_PG/supply/signlab/release.sig" "$TQ_PG/supply/signlab/release.txt" 2>/dev/null ;;
+task) cat <<'EOF'
+Anyone with the author's **public** key can verify the file was never
+altered. Check `signlab/release.txt`:
+
+  `openssl dgst -sha256 -verify signlab/public.pem \`
+  `  -signature signlab/release.sig signlab/release.txt`
+
+  `-verify signlab/public.pem`   check using the public key (no secret!)
+  `-signature ...release.sig`    the signature to check against
+EOF
+;;
+check)
+  tq_ran openssl && tq_succ && tq_line_has "release.txt" && return 0
+  return 1 ;;
+hint1) echo 'openssl dgst -sha256 -verify public.pem -signature release.sig ...' ;;
+hint2) cat <<'EOF'
+Type:
+  `openssl dgst -sha256 -verify signlab/public.pem \`
+  `  -signature signlab/release.sig signlab/release.txt`
+EOF
+;;
+solution) echo 'openssl dgst -sha256 -verify signlab/public.pem -signature signlab/release.sig signlab/release.txt' ;;
+fact) echo 'Verified OK! That is how OS updates, apt packages and app stores work.' ;;
+how) echo "openssl verified signlab/release.txt against signlab/release.sig" ;;
+esac; }
+
+t18_11() { case $1 in
+title) echo "Catch a tampered release" ;;
+prep)
+  tq_setup_supply; tq_need_dir "$TQ_PG/supply"
+  [ -s "$TQ_PG/supply/signlab/release.sig" ] ||
+    openssl dgst -sha256 -sign "$TQ_PG/supply/signlab/private.pem" \
+      -out "$TQ_PG/supply/signlab/release.sig" "$TQ_PG/supply/signlab/release.txt" 2>/dev/null ;;
+task) cat <<'EOF'
+Now an attacker added one sneaky line to `signlab/release_tampered.txt`.
+Verify it with the same signature -- **failure is the expected result**:
+
+  `openssl dgst -sha256 -verify signlab/public.pem \`
+  `  -signature signlab/release.sig signlab/release_tampered.txt`
+EOF
+;;
+check)
+  if tq_ran openssl && ! tq_succ && tq_line_has "release_tampered.txt"; then
+    tq_flag "FLAG{signatures-catch-every-tamper}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'Same verify command, but with signlab/release_tampered.txt at the end.' ;;
+hint2) cat <<'EOF'
+Type:
+  `openssl dgst -sha256 -verify signlab/public.pem \`
+  `  -signature signlab/release.sig signlab/release_tampered.txt`
+EOF
+;;
+solution) echo 'openssl dgst -sha256 -verify signlab/public.pem -signature signlab/release.sig signlab/release_tampered.txt' ;;
+fact) echo 'Verification failed! Without the private key, no attacker can forge a
+valid signature for tampered code.' ;;
+how) echo "openssl rejected signlab/release_tampered.txt (FLAG{signatures-catch-every-tamper})" ;;
+esac; }
+
+# ===========================================================================
+#  LEVEL 19: Network Exposure & TLS Defense (Advanced Pentesting)
+# ===========================================================================
+
+tq_setup_netsec() {
+  local d="$TQ_PG/netsec"
+  mkdir -p "$d/app" "$d/revshell" "$d/tls" "$d/tls_root"
+  if [ ! -f "$d/.made" ]; then
+    cat > "$d/app/devserver.conf" <<'EOF'
+APP_NAME=internal-dashboard
+BIND_HOST=0.0.0.0
+BIND_PORT=8080
+AUTH_REQUIRED=false
+EOF
+    cat > "$d/revshell/demo.sh" <<'EOF'
+#!/bin/sh
+# Safe loopback-only (127.0.0.1) demonstration of an outbound callback.
+# Never leaves this computer and exits right away.
+if command -v perl >/dev/null 2>&1; then
+  perl - <<'PL'
+use strict; use warnings; use IO::Socket::INET;
+my $srv = IO::Socket::INET->new(LocalAddr => '127.0.0.1', LocalPort => 0,
+                                Listen => 2, ReuseAddr => 1, Proto => 'tcp') or die $!;
+my $port = $srv->sockport;
+print "[ATTACKER LISTENER] Waiting on 127.0.0.1:$port...\n";
+my $pid = fork();
+if (defined $pid && $pid == 0) {
+  my $c = IO::Socket::INET->new(PeerAddr => '127.0.0.1', PeerPort => $port, Proto => 'tcp') or exit 1;
+  my $who = `whoami`; chomp $who;
+  print $c "OUTBOUND_HELLO user=$who\n";
+  close $c;
+  exit 0;
+}
+print "[VICTIM OUTBOUND]   Connecting OUT to 127.0.0.1:$port (bypasses inbound firewall!)\n";
+my $conn = $srv->accept();
+my $line = <$conn>;
+close $conn; close $srv; waitpid($pid, 0);
+print "[ATTACKER LISTENER] CALLBACK_RECEIVED: $line";
+print "[LESSON]            FLAG{outbound-bypasses-inbound-walls}\n";
+PL
+else
+  python3 - <<'PY'
+import getpass, socket, threading
+srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+srv.bind(("127.0.0.1", 0))
+srv.listen(2)
+port = srv.getsockname()[1]
+print(f"[ATTACKER LISTENER] Waiting on 127.0.0.1:{port}...")
+def victim():
+    c = socket.create_connection(("127.0.0.1", port))
+    c.sendall(f"OUTBOUND_HELLO user={getpass.getuser()}\n".encode())
+    c.close()
+print(f"[VICTIM OUTBOUND]   Connecting OUT to 127.0.0.1:{port} (bypasses inbound firewall!)")
+t = threading.Thread(target=victim)
+t.start()
+conn, _ = srv.accept()
+line = conn.recv(256).decode().strip()
+conn.close(); srv.close(); t.join()
+print(f"[ATTACKER LISTENER] CALLBACK_RECEIVED: {line}")
+print("[LESSON]            FLAG{outbound-bypasses-inbound-walls}")
+PY
+fi
+EOF
+    chmod 755 "$d/revshell/demo.sh"
+    cat > "$d/tls/ext.cnf" <<'EOF'
+[req]
+distinguished_name = dn
+x509_extensions = v3
+prompt = no
+[dn]
+CN = 127.0.0.1
+O = MiniShop Demo Self-Signed
+[v3]
+subjectAltName = IP:127.0.0.1
+basicConstraints = CA:TRUE
+EOF
+    if command -v openssl >/dev/null 2>&1; then
+      openssl req -x509 -newkey rsa:2048 -nodes \
+        -keyout "$d/tls/server.key" -out "$d/tls/server.crt" \
+        -days 365 -config "$d/tls/ext.cnf" >/dev/null 2>&1
+    fi
+    echo "HTTPS OK! You verified the certificate instead of using curl -k." > "$d/tls_root/index.txt"
+    : > "$d/.made"
+  fi
+}
+
+tq_L19() { case $1 in
+title) echo "Network Exposure & TLS Defense" ;;
+tasks) echo "t19_1 t19_2 t19_3 t19_4 t19_5 t19_6 t19_7 t19_8 t19_9 t19_10" ;;
+setup) tq_setup_netsec; cd "$TQ_PG/netsec" || return ;;
+intro)
+  tq_banner "LEVEL 19" "NETWORK EXPOSURE & TLS DEFENSE"
+  tq_art <<'ART'
+
+      0.0.0.0 (everyone on Wi-Fi)  vs  127.0.0.1 (only this machine)
+      Outbound reverse shell       --> slips right past inbound walls
+      HTTPS certificate check      --> why `curl -k` invites MITM
+ART
+  echo
+  tq_max "Final level! Let's look at three network traps attackers rely on:" \
+         "wide-open local services, outbound callbacks that slip past" \
+         'firewalls, and people disabling HTTPS checks with `curl -k`.'
+  ;;
+outro)
+  tq_tlslab_stop
+  cat <<'EOF'
+You audited listening addresses, locked an exposed `0.0.0.0` service to
+`127.0.0.1`, watched an outbound callback bypass an inbound-only wall,
+inspected an HTTPS certificate, pinned it safely with `--cacert` instead
+of `-k`, and passed the Defender's Checklist. You now see both sides of
+the terminal: how attacks work, and how to stop them.
+EOF
+;;
+explore)
+  tq_os 'Check what your Mac is listening on: `netstat -an -p tcp | grep LISTEN`.' \
+        'Check what your Linux machine is listening on: `ss -tln`.'
+  echo 'Inspect any website cert: `echo | openssl s_client -connect example.com:443 2>/dev/null | openssl x509 -noout -issuer -dates`.' ;;
+esac; }
+
+t19_1() { case $1 in
+title) echo "Who is listening on your machine?" ;;
+card) tq_card "0.0.0.0 VS 127.0.0.1" <<'EOF'
+A service bound to `127.0.0.1` accepts connections **only** from your own
+machine. Bound to `0.0.0.0` (or `*`), it accepts connections from
+**everyone on your Wi-Fi or network**!
+EOF
+;;
+prep) tq_setup_netsec; tq_need_dir "$TQ_PG/netsec" ;;
 task)
   if [ "$TQ_OS" = mac ]; then
     cat <<'EOF'
-Does your Mac support the built-in hypervisor? (1 = yes)
+List the listening TCP ports on your Mac and watch the Local Address:
 
-      `sysctl kern.hv_support`
+      `netstat -an -p tcp | grep LISTEN`
+
+  `netstat -an -p tcp`   all numeric TCP sockets
+  `| grep LISTEN`        only programs waiting for connections
 EOF
   else
     cat <<'EOF'
-Does your CPU support virtual machines (VT-x on Intel, AMD-V on AMD)?
+List the listening TCP ports on your machine and watch Local Address:
 
-      `LC_ALL=C lscpu | grep -i -E "model name|virt"`
+      `ss -tln`
 
-  `LC_ALL=C`   English output, whatever your language (so grep finds it)
-  `-i -E`      ignore capitals; `|` means "or"
+  `ss`     socket statistics
+  `-tln`   TCP (`t`), listening (`l`), numeric ports (`n`)
 EOF
   fi ;;
 check)
   if [ "$TQ_OS" = mac ]; then
-    tq_ran sysctl && tq_out_has "hv_support" && return 0
+    tq_ran netstat && tq_succ && return 0
   else
-    { tq_ran lscpu || tq_line_has "/proc/cpuinfo"; } && tq_out_any && return 0
+    tq_ran ss && tq_succ && return 0
   fi
   return 1 ;;
-hint1) tq_os 'sysctl and kern.hv_support.' 'LC_ALL=C lscpu, then | grep -i -E "model name|virt".' ;;
-hint2) tq_os 'Type `sysctl kern.hv_support`.' 'Type `LC_ALL=C lscpu | grep -i -E "model name|virt"`.' ;;
-solution) tq_os 'sysctl kern.hv_support' 'LC_ALL=C lscpu | grep -i -E "model name|virt"' ;;
-fact) echo 'Cloud servers: one machine, many customers, each with its own kernel.' ;;
-how) echo "hardware virtualization support was checked via lscpu or sysctl" ;;
+hint1) tq_os 'netstat -an -p tcp | grep LISTEN.' 'ss -tln.' ;;
+hint2) tq_os 'Type `netstat -an -p tcp | grep LISTEN`.' 'Type `ss -tln`.' ;;
+solution) tq_os 'netstat -an -p tcp | grep LISTEN' 'ss -tln' ;;
+fact) echo 'Dev tools and local databases often bind `0.0.0.0` by default -- exposing
+them to everyone on cafe Wi-Fi.' ;;
+how) echo "listening TCP addresses were inspected" ;;
 esac; }
 
-# On a Mac, kern.hv_vmm_present is missing on older systems: hw.model then
-# says it (a virtual Mac calls itself VirtualMac).
-tq_mac_vmm_ok() { sysctl -n kern.hv_vmm_present >/dev/null 2>&1; }
+t19_2() { case $1 in
+title) echo "Spot an exposed service config" ;;
+prep)
+  tq_setup_netsec; tq_need_dir "$TQ_PG/netsec"
+  if ! tq_has "$TQ_SOLVED" t19_3; then
+    cat > "$TQ_PG/netsec/app/devserver.conf" <<'EOF'
+APP_NAME=internal-dashboard
+BIND_HOST=0.0.0.0
+BIND_PORT=8080
+AUTH_REQUIRED=false
+EOF
+  fi ;;
+task) cat <<'EOF'
+Read a teammate's internal dashboard config in `app/devserver.conf`:
 
-t15_10() { case $1 in
-title) echo "Am I in a VM right now?" ;;
-prep) tq_setup_isolation; tq_need_dir "$TQ_PG/isolation" ;;
+      `cat app/devserver.conf`
+EOF
+;;
+check)
+  tq_out_has "0.0.0.0" && return 0
+  return 1 ;;
+hint1) echo 'cat and app/devserver.conf.' ;;
+hint2) echo 'Type `cat app/devserver.conf`.' ;;
+solution) echo 'cat app/devserver.conf' ;;
+fact) echo '`BIND_HOST=0.0.0.0` plus `AUTH_REQUIRED=false`: anyone on the LAN gets in.' ;;
+how) echo "app/devserver.conf was read showing BIND_HOST=0.0.0.0" ;;
+esac; }
+
+t19_3() { case $1 in
+title) echo "Bind it to localhost only" ;;
+prep)
+  tq_setup_netsec; tq_need_dir "$TQ_PG/netsec" ;;
+task) cat <<'EOF'
+Lock `app/devserver.conf` to `127.0.0.1` using `sed` and `mv`:
+
+  `sed 's/0\.0\.0\.0/127.0.0.1/' app/devserver.conf > app/dev.tmp \`
+  `  && mv app/dev.tmp app/devserver.conf`
+
+  `sed 's/old/new/'`   swap `0.0.0.0` for `127.0.0.1` (`\.` = literal dot)
+  `> ... && mv`        save to a temp file, then swap it in
+EOF
+;;
+check)
+  grep -q "^BIND_HOST=127\.0\.0\.1$" "$TQ_PG/netsec/app/devserver.conf" 2>/dev/null &&
+    ! grep -q "0\.0\.0\.0" "$TQ_PG/netsec/app/devserver.conf" 2>/dev/null && return 0
+  return 1 ;;
+hint1) echo 'Replace 0.0.0.0 with 127.0.0.1 using sed into app/dev.tmp, then mv.' ;;
+hint2) cat <<'EOF'
+Type:
+  `sed 's/0\.0\.0\.0/127.0.0.1/' app/devserver.conf > app/dev.tmp \`
+  `  && mv app/dev.tmp app/devserver.conf`
+EOF
+;;
+solution) echo "sed 's/0\.0\.0\.0/127.0.0.1/' app/devserver.conf > app/dev.tmp && mv app/dev.tmp app/devserver.conf" ;;
+fact) echo 'One change closes the dashboard to the whole network while keeping it
+reachable from your own browser.' ;;
+how) echo "app/devserver.conf updated to BIND_HOST=127.0.0.1" ;;
+esac; }
+
+t19_4() { case $1 in
+title) echo "Read how a reverse shell works" ;;
+card) tq_card "REVERSE SHELLS" <<'EOF'
+Firewalls and home routers block **incoming** connections. So instead of
+knocking on your door, an attacker tricks you into running code that
+calls **out** to *their* server -- walking right past an inbound wall!
+EOF
+;;
+prep) tq_setup_netsec; tq_need_dir "$TQ_PG/netsec" ;;
+task) cat <<'EOF'
+Read our safe, loopback-only demo `revshell/demo.sh` first:
+
+      `cat revshell/demo.sh`
+EOF
+;;
+check)
+  tq_out_has "127.0.0.1" && tq_out_has "CALLBACK_RECEIVED" && return 0
+  return 1 ;;
+hint1) echo 'cat and revshell/demo.sh.' ;;
+hint2) echo 'Type `cat revshell/demo.sh`.' ;;
+solution) echo 'cat revshell/demo.sh' ;;
+fact) echo 'It only connects to `127.0.0.1` and sends `whoami`, then exits.' ;;
+how) echo "revshell/demo.sh was read" ;;
+esac; }
+
+t19_5() { case $1 in
+title) echo "Watch the outbound callback" ;;
+prep) tq_setup_netsec; tq_need_dir "$TQ_PG/netsec" ;;
+task) cat <<'EOF'
+Run the loopback callback demo to see the victim call out to the
+listener:
+
+      `bash revshell/demo.sh`
+EOF
+;;
+check)
+  if tq_out_has "CALLBACK_RECEIVED" && tq_out_has "FLAG{outbound-bypasses-inbound-walls}"; then
+    tq_flag "FLAG{outbound-bypasses-inbound-walls}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'bash and revshell/demo.sh.' ;;
+hint2) echo 'Type `bash revshell/demo.sh`.' ;;
+solution) echo 'bash revshell/demo.sh' ;;
+fact) echo 'Inbound firewalls cannot stop outbound callbacks. That is why never
+running untrusted code and watching egress traffic both matter.' ;;
+how) echo "revshell/demo.sh demonstrated an outbound loopback callback (FLAG{outbound-bypasses-inbound-walls})" ;;
+esac; }
+
+t19_6() { case $1 in
+title) echo "Inspect an HTTPS certificate" ;;
+card) tq_card "TLS CERTIFICATES" <<'EOF'
+HTTPS gives you **encryption** AND **identity** (proving who the server
+is). Identity comes from a **certificate** signed by a trusted
+Certificate Authority (CA). Anyone can mint a fake self-signed cert!
+EOF
+;;
+prep) tq_setup_netsec; tq_need_dir "$TQ_PG/netsec" ;;
+task) cat <<'EOF'
+Inspect our local server's certificate `tls/server.crt`:
+
+      `openssl x509 -in tls/server.crt -noout -subject -issuer -dates`
+
+  `x509`             read a TLS certificate
+  `-noout`           hide the raw base64 block
+  `-subject -issuer` who it claims to be, and who signed it
+  `-dates`           when it starts and expires
+EOF
+;;
+check)
+  tq_ran openssl && tq_succ && tq_out_has "127.0.0.1" && return 0
+  return 1 ;;
+hint1) echo 'openssl x509 -in tls/server.crt -noout -subject -issuer -dates.' ;;
+hint2) echo 'Type `openssl x509 -in tls/server.crt -noout -subject -issuer -dates`.' ;;
+solution) echo 'openssl x509 -in tls/server.crt -noout -subject -issuer -dates' ;;
+fact) echo 'Look: `subject` and `issuer` are identical -- it signed itself! Your
+system has no reason to trust it.' ;;
+how) echo "openssl x509 displayed subject, issuer and dates of tls/server.crt" ;;
+esac; }
+
+t19_7() { case $1 in
+title) echo "Verify an untrusted cert" ;;
+prep) tq_setup_netsec; tq_need_dir "$TQ_PG/netsec" ;;
+task) cat <<'EOF'
+Ask `openssl` whether your system trusts `tls/server.crt`. Because it is
+self-signed, an **error is the expected, safe result**:
+
+      `openssl verify tls/server.crt`
+EOF
+;;
+check)
+  tq_ran openssl && ! tq_succ && tq_line_has "server.crt" && return 0
+  return 1 ;;
+hint1) echo 'openssl verify and tls/server.crt.' ;;
+hint2) echo 'Type `openssl verify tls/server.crt`.' ;;
+solution) echo 'openssl verify tls/server.crt' ;;
+fact) echo 'Rejected! Without this check, anyone on public Wi-Fi could hand you
+a fake bank certificate (a Man-in-the-Middle attack).' ;;
+how) echo "openssl verify rejected the untrusted self-signed certificate" ;;
+esac; }
+
+t19_8() { case $1 in
+title) echo "Watch curl refuse the trap" ;;
+prep) tq_setup_netsec; tq_need_dir "$TQ_PG/netsec"; tq_tlslab_start ;;
+needs) echo tlslab ;;
 task)
-  if [ "$TQ_OS" = mac ] && tq_mac_vmm_ok; then
-    cat <<'EOF'
-Is this Mac real, or a virtual one? (0 = real, 1 = virtual)
+  local p; p=$(tq_tlslab_port)
+  cat <<EOF
+The game started a local HTTPS server using that self-signed cert. Try
+fetching it with plain \`curl\` -- **refusal is the expected result**:
 
-      `sysctl kern.hv_vmm_present`
+      \`curl -sS https://127.0.0.1:$p/index.txt\`
+
+  \`-sS\`   quiet progress meter, but still show errors
 EOF
-  elif [ "$TQ_OS" = mac ]; then
-    cat <<'EOF'
-Is this Mac real, or a virtual one? Its model name tells:
-
-      `sysctl hw.model`
-
-A virtual Mac calls itself "VirtualMac".
-EOF
-  elif command -v systemd-detect-virt >/dev/null 2>&1; then
-    cat <<'EOF'
-Is this computer real, or a virtual one?
-
-      `systemd-detect-virt`
-
-"none" means real hardware.
-EOF
-  else
-    cat <<'EOF'
-Is this computer real, or a virtual one? Inside a VM, the CPU shows a
-"hypervisor" flag:
-
-      `grep -c hypervisor /proc/cpuinfo`
-
-0 means: no flag, real hardware.
-EOF
-  fi ;;
+  ;;
 check)
-  if [ "$TQ_OS" = mac ]; then
-    tq_ran sysctl && { tq_out_has "hv_vmm_present" || tq_out_has "hw.model"; } && return 0
-  else
-    tq_ran systemd-detect-virt && tq_out_any && return 0
-    tq_line_has "/proc/cpuinfo" && tq_out_any && return 0
-  fi
+  tq_ran curl && ! tq_succ && ! tq_line_opt k && ! tq_line_has "insecure" && return 0
   return 1 ;;
-hint1) echo 'Copy the command from the task.' ;;
-hint2) echo "Type \`$(t15_10 solution)\`." ;;
-solution)
-  if [ "$TQ_OS" = mac ] && tq_mac_vmm_ok; then echo 'sysctl kern.hv_vmm_present'
-  elif [ "$TQ_OS" = mac ]; then echo 'sysctl hw.model'
-  elif command -v systemd-detect-virt >/dev/null 2>&1; then echo 'systemd-detect-virt'
-  else echo 'grep -c hypervisor /proc/cpuinfo'
-  fi ;;
-fact) echo 'Some malware checks this too, and plays dead inside researchers'"'"' VMs.' ;;
-how) echo "virtualization status was queried" ;;
+hint1) echo 'curl -sS and the https://127.0.0.1 URL (no -k!).' ;;
+hint2)
+  local p; p=$(tq_tlslab_port)
+  echo "Type \`curl -sS https://127.0.0.1:$p/index.txt\`." ;;
+solution) echo 'curl -sS "https://127.0.0.1:$(cat .tlsport)/index.txt"' ;;
+fact) echo '`curl` refused to send data to an unverified server. People often type
+`curl -k` to silence that error -- which turns HTTPS protection OFF!' ;;
+how) echo "curl refused the untrusted local HTTPS certificate" ;;
 esac; }
 
-t15_11() { case $1 in
-title) echo "Pick the right wall" ;;
+t19_9() { case $1 in
+title) echo "Trust the exact cert, never -k" ;;
+prep) tq_setup_netsec; tq_need_dir "$TQ_PG/netsec"; tq_tlslab_start ;;
+needs) echo tlslab ;;
+task)
+  local p; p=$(tq_tlslab_port)
+  cat <<EOF
+For a private server whose cert you already own, pin **that exact file**
+with \`--cacert\` instead of disabling checks with \`-k\`:
+
+      \`curl -sS --cacert tls/server.crt https://127.0.0.1:$p/index.txt\`
+
+  \`--cacert FILE\`   trust ONLY this certificate file, still reject fakes
+EOF
+  ;;
+check)
+  if tq_ran curl && tq_succ && tq_line_has "cacert" && ! tq_line_opt k && tq_out_has "HTTPS OK"; then
+    tq_tlslab_stop
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'curl -sS --cacert tls/server.crt followed by the https URL.' ;;
+hint2)
+  local p; p=$(tq_tlslab_port)
+  echo "Type \`curl -sS --cacert tls/server.crt https://127.0.0.1:$p/index.txt\`." ;;
+solution) echo 'curl -sS --cacert tls/server.crt "https://127.0.0.1:$(cat .tlsport)/index.txt"' ;;
+fact) echo 'Verified and encrypted! Treat `curl -k` as a red flag whenever an AI
+or tutorial suggests it.' ;;
+how) echo "curl verified the local HTTPS server using --cacert tls/server.crt" ;;
+esac; }
+
+t19_10() { case $1 in
+title) echo "The defender's checklist" ;;
 kind) echo quiz ;;
 qmode) echo choice ;;
-flag) echo "FLAG{walls-within-walls}" ;;
-card) tq_card "PROCESS VS CONTAINER VS VM" <<'EOF'
-Faster walls are thinner; thicker walls cost more RAM and boot time.
-Cloud sandboxes even use tiny VMs that start in under a second. Pick
-the right wall for each case.
+flag) echo "FLAG{think-like-an-attacker-defend-like-a-pro}" ;;
+card) tq_card "THINK LIKE AN ATTACKER" <<'EOF'
+Knowing what an attacker tries next turns vague rules into habits. Five
+real-world scenarios from Chapter 6 -- pick the right defense for each.
 EOF
 ;;
-task) echo 'Six real-world scenarios. For each, pick the right wall (**a**, **b** or **c**):' ;;
-qn) echo 6 ;;
+task) echo 'Five pentest scenarios. Pick the right answer (**a**, **b** or **c**):' ;;
+qn) echo 5 ;;
 q1) cat <<'EOF'
-Search your own notes folder with grep:
-a) Normal process   b) Container   c) VM / Hypervisor
-a
-Trusted local tool working on your own files: a normal process is instant
-and needs no extra layer.
+A root cron job runs /opt/backup.sh and `ls -l` shows -rwxrwxrwx. Fix?
+a) Rename file   b) chmod 755 (and check parent dir)   c) Add sudo
+b
+World-writable scripts run by root give every user a root shell. Lock the
+file to 755 (owned by root) and make sure its parent folder is not writable.
 EOF
 ;;
 q2) cat <<'EOF'
-Package a web app so it runs with the same files on laptop and server:
-a) Normal process   b) Container   c) Full desktop VM
-b
-Containers shine at packaging: private filesystem and dependencies,
-milliseconds to start, and tiny memory overhead.
+A script runs `cp * ../public/` in an upload folder. How do you fix it?
+a) `cp -- * ../public/`   b) `cp -R * ../public/`   c) `chmod 777 *`
+a
+Double dash (`--`) or `./*` stops commands from parsing a dash-named file
+like `-R` as an option (wildcard injection).
 EOF
 ;;
 q3) cat <<'EOF'
-Host two rival banks on one physical cloud server:
-a) Normal process   b) Shared-kernel container   c) VM / Hypervisor
-c
-Untrusted tenants sharing hardware need separate kernels so a bug in one
-tenant's OS cannot escape into the other bank's machine.
+Changing `/invoice?id=102` to `id=101` shows another user's bill. Fix?
+a) Hide it in robots.txt  b) Check ownership on server  c) Base64 the ID
+b
+Neither `robots.txt` nor base64 is access control. The server must check
+that the logged-in user actually owns record 101 (IDOR defense).
 EOF
 ;;
 q4) cat <<'EOF'
-Detonate a real suspected virus sample to study what it does:
-a) Normal process   b) Container   c) VM / Hypervisor (no network)
-c
-Real malware analysis needs a separate kernel, snapshots to roll back,
-and no network connection to the outside world.
+Before running an untrusted script or unpacking a .tar, what checks first?
+a) `cat -v` and `tar -tf`   b) `cat` and `tar -xf`   c) `chmod +x`
+a
+`cat -v` exposes hidden terminal escape codes; `tar -tf` lists archive
+paths (catching `../` Tar Slip) without writing a single byte to disk.
 EOF
 ;;
-q5) if [ "$TQ_OS" = mac ]; then cat <<'EOF'
-Run Linux Docker containers on your Mac:
-a) Normal process   b) Container only   c) Hypervisor VM + Container
-c
-macOS runs the Darwin kernel, not Linux. Docker on a Mac boots a tiny
-Linux VM through macOS's hypervisor first, then runs containers inside it.
-EOF
-else cat <<'EOF'
-Run a program that only exists for Windows on your Linux laptop:
-a) Normal process   b) Container   c) VM / Hypervisor
-c
-A container shares your Linux kernel, so it can only run Linux programs.
-Windows needs its own kernel: a virtual machine.
-EOF
-fi ;;
-q6) cat <<'EOF'
-Let an AI agent install packages and run tests on an untrusted repo:
-a) Bare process   b) Container or micro-VM sandbox   c) chmod 777
+q5) cat <<'EOF'
+On cafe Wi-Fi, `curl` rejects a site's TLS cert. A post says "add -k".
+a) Add `-k`   b) Stop -- possible MITM attack   c) Use http://
 b
-Untrusted code execution should never touch your real home folder or SSH
-keys: put the agent in a container or a tiny-VM sandbox.
+`-k` disables certificate checks completely, letting a Wi-Fi attacker
+impersonate any website. Never use `-k` on untrusted networks.
 EOF
 ;;
 check) return 1 ;;
-hint1) echo 'Ask: is the code trusted? Do you need packaging speed, or a separate kernel?' ;;
-hint2) echo 'Trusted local = process; portable app = container;
-untrusted tenants, malware or another OS kernel = VM; AI = sandbox.' ;;
-solution) echo 'a, b, c, c, c, b' ;;
-how) echo "quiz: six isolation-layer scenarios, each explained, plus FLAG{walls-within-walls}" ;;
+hint1) echo 'Recall the exact defense from Levels 16 to 19 for each attack.' ;;
+hint2) echo 'chmod 755; cp -- *; server ownership check; cat -v & tar -tf; never -k.' ;;
+solution) echo 'b, a, b, a, b' ;;
+how) echo "quiz: five Chapter 6 pentest defense scenarios, plus FLAG{think-like-an-attacker-defend-like-a-pro}" ;;
 esac; }
 
 # ===========================================================================
@@ -10541,6 +12667,8 @@ esac; }
 
 tq_finale() {
   tq_netlab_stop
+  tq_weblab_stop
+  tq_tlslab_stop
   tq_cheatsheet_update
   tq_clear
   echo
