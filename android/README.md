@@ -5,15 +5,35 @@ the phone's own shell (Android's `sh` and toybox), inside the app's
 sandbox. Nothing else to install, no permissions, no network, no ads, no
 account. Android 10 and newer, with touch alone or with a keyboard alone.
 
-**Status: Levels 0 to 15** ("Hello, Terminal" to "Life and Death of an
-App") are playable; the side quest "Portrait of Your Phone" follows.
+**Version 1.0:** Levels 0 to 15 ("Hello, Terminal" to "Life and Death of
+an App") and the side quest "Portrait of Your Phone" (offered after Level 5,
+also in the menu).
+
+## Install
+
+Download `daemons-apprentice-android-X.Y.apk` from a release tagged
+`android-vX.Y`, open it, and allow your browser to install apps when
+Android asks. To check that the APK is the one published here, compare its
+signing certificate with this SHA-256 fingerprint (`apksigner verify
+--print-certs`, from the Android SDK build tools):
+
+    15a0aef282d2946944300fe646b6a469de3a2c06fb67c39a7e3a431b111cdc8d
+
+Android itself checks it for every update: an update signed with another
+key does not install over this one.
 
 ## Build
 
 JDK 17 and the Android SDK (with NDK 29) are needed.
 
     ./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
-    ./gradlew assembleRelease      # shrunk; signed with the debug key unless a release key is configured
+    ./gradlew assembleRelease      # shrunk, app/build/outputs/apk/release/app-release.apk
+
+The release key is not in the repository. `assembleRelease` signs with it
+when a properties file outside the repository names it (`storeFile`,
+`storePassword`, `keyAlias`, `keyPassword`): the file named by
+`DA_KEYSTORE_PROPERTIES`, or `~/.config/daemons-apprentice/keystore.properties`.
+Without it, the release build is signed with the debug key, for testing.
 
 ## Tests
 
@@ -52,7 +72,7 @@ screenshot of every solved task.
   folder, its save file, its shell and app process for `kill`); it checks
   every command of a line, loops and multi-line commands included.
   Android's sandbox does the rest.
-- `game/`: the levels as data (`Level0.kt` to `Level15.kt`, listed in
+- `game/`: the levels as data (`Level0.kt` to `Level15.kt` and the side quest `SideQuest1.kt`, listed in
   `Levels.kt`), the flow (`GameEngine.kt`), the chips (`Chips.kt`).
   `edit file` is the game's own command: the phone has no `nano`.
 - `ui/`: the guided console (Compose), the command line (`CommandInput.kt`:

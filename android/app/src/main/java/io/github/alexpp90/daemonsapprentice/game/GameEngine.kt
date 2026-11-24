@@ -41,6 +41,8 @@ enum class Wait {
 
 data class GameState(
     val level: Int = 0,
+    /** The header's short name: "L4" or "S1". */
+    val levelLabel: String = "L0",
     val levelTitle: String = "",
     val task: Int = 0,
     val taskCount: Int = 0,
@@ -62,7 +64,12 @@ data class GameState(
 )
 
 /** A level as the menu shows it. */
-data class LevelInfo(val number: Int, val title: String, val done: Boolean, val current: Boolean)
+data class LevelInfo(
+    val number: Int, val title: String, val done: Boolean, val current: Boolean,
+    /** "Level 4" or "Side quest S1". */
+    val name: String = "Level $number",
+    val side: Boolean = false,
+)
 
 sealed interface UiEvent {
     data object OpenFilePicker : UiEvent
@@ -75,7 +82,7 @@ sealed interface UiEvent {
 class GameEngine(
     private val dirs: GameDirs,
     private val shell: Shell,
-    private val levels: List<Level> = Levels.all,
+    private val levels: List<Level> = Levels.everything,
     private val random: Random = Random.Default,
 ) {
     private val _state = MutableStateFlow(GameState())
@@ -96,6 +103,8 @@ class GameEngine(
     private var pickerOpen = false
     private class EditTarget(val file: File, val name: String, val line: String)
     private var editing: EditTarget? = null
+    /** The side quest the game is offering right now (it waits for `yes` or `no`). */
+    private var offering: Level? = null
 
     private val level get() = levels[levelIndex]
     private val task get() = level.tasks[taskIndex]
@@ -137,7 +146,7 @@ class GameEngine(
     }
 
     private fun publishLevels() {
-        val infos = levels.map { LevelInfo(it.number, it.title, isDone(it), it == level) }
+        val infos = levels.map { LevelInfo(it.number, it.title, isDone(it), it == level, it.name, it.side != null) }
         _state.update { it.copy(levels = infos) }
     }
 
@@ -145,6 +154,11 @@ class GameEngine(
     suspend fun jumpTo(number: Int) {
         val i = levels.indexOfFirst { it.number == number }
         if (i < 0 || _state.value.wait == Wait.Busy) return
+        val target = levels[i]
+        // A side quest remembers where the main path waits; choosing a main level forgets it.
+        if (target.side != null) { if (level.side == null && offering == null) save["back"] = "${level.number}:$taskIndex" }
+        else save.remove("back")
+        offering = null
         levelIndex = i; taskIndex = 0
         store()
         enterLevel()
@@ -185,7 +199,7 @@ class GameEngine(
         val t = task
         _state.update {
             it.copy(
-                level = level.number, levelTitle = level.title, task = taskIndex + 1,
+                level = level.number, levelLabel = level.label, levelTitle = level.title, task = taskIndex + 1,
                 taskCount = level.tasks.size, taskTitle = t.title,
                 pinned = "**${t.title}**: `${t.command}`",
                 taskText = (listOfNotNull(t.card) + t.chunks).joinToString("\n\n"),
@@ -225,8 +239,11 @@ class GameEngine(
 
     private val explainedKeys = mutableSetOf<String>()
 
-    private suspend fun solved() {
-        append(text(Praise.next(random), Line.Kind.Pid1), text(task.fact, Line.Kind.Fact))
+    private suspend fun solved(a: Attempt? = null) {
+        val note = if (a != null) task.noted?.invoke(TaskContext(dirs, shell), a) else null
+        append(text(Praise.next(random), Line.Kind.Pid1))
+        note?.let { append(text(it, Line.Kind.Fact)) }
+        append(text(task.fact, Line.Kind.Fact))
         task.flag?.let { f ->
             addTo("flags", f)
             append(text("${Pid1.CHEER}  Flag found! You have ${saved("flags").size}. They are in your cheatsheet.", Line.Kind.Pid1))
@@ -254,21 +271,81 @@ class GameEngine(
         clear()
         publishLevels()
         val art = Pid1.levelDone[level.number % Pid1.levelDone.size].joinToString("\n")
-        append(Line.Art(id(), art), text("**Level ${level.number} complete: ${level.title}!**", Line.Kind.Title))
-        _state.update { it.copy(task = it.taskCount, pinned = "**Level ${level.number} complete**", chips = emptyList(), showChips = false) }
-        val next = levels.getOrNull(levelIndex + 1)
+        append(Line.Art(id(), art), text("**${level.name} complete: ${level.title}!**", Line.Kind.Title))
+        _state.update { it.copy(task = it.taskCount, pinned = "**${level.name} complete**", chips = emptyList(), showChips = false) }
+        if (level.side != null) { sideQuestComplete(); return }
+        val main = levels.filter { it.side == null }
+        val next = main.getOrNull(main.indexOf(level) + 1)
         if (next == null) {
-            append(text("That was the last level of this build. More comes with the next one; your progress is saved.", Line.Kind.Note))
+            val open = levels.filter { it.side != null && !isDone(it) }
+            append(text("That was the last level. From your first `help` to the low-memory killer: you have seen your phone from the inside. Your progress is saved.", Line.Kind.Note))
+            if (open.isNotEmpty()) append(text("Still open in the menu: " + open.joinToString(", ") { "${it.name}, ${it.title}" } + ".", Line.Kind.Note))
             setWait(Wait.Done)
             return
         }
         append(text("Next: **Level ${next.number}, ${next.title}.**", Line.Kind.Note))
         setWait(Wait.Continue)
         pages = ArrayDeque()
+        val done = level
         afterPages = {
-            levelIndex++; taskIndex = 0
+            levelIndex = levels.indexOf(next); taskIndex = 0
             store()
-            enterLevel()
+            val side = levels.firstOrNull { it.side != null && it.after == done.number && !isDone(it) }
+            if (side != null) offer(side) else enterLevel()
+        }
+    }
+
+    /** A side quest is done: back to where the main path waits. */
+    private suspend fun sideQuestComplete() {
+        val (bl, bt) = (save["back"] ?: "").split(':').let { it.getOrNull(0)?.toIntOrNull() to it.getOrNull(1)?.toIntOrNull() }
+        val main = levels.filter { it.side == null }
+        val back = main.firstOrNull { it.number == bl } ?: main.firstOrNull { !isDone(it) } ?: main.last()
+        append(text("Back to where you were: **Level ${back.number}, ${back.title}.**", Line.Kind.Note))
+        setWait(Wait.Continue)
+        pages = ArrayDeque()
+        afterPages = {
+            save.remove("back")
+            levelIndex = levels.indexOf(back)
+            taskIndex = (if (back.number == bl) bt ?: 0 else 0).coerceIn(0, back.tasks.lastIndex)
+            store()
+            if (isDone(back) && taskIndex == back.tasks.lastIndex) levelComplete() else enterLevel()
+        }
+    }
+
+    /** After its main level: a side quest is offered; `yes` plays it now, `no` goes on (it waits in the menu). */
+    private fun offer(s: Level) {
+        offering = s
+        clear()
+        append(text("${Pid1.CHEER}  **A side quest is open: ${s.title}**", Line.Kind.Pid1), text(s.pitch),
+            text("Play it now? Type `yes`, or `no` to go on with **Level ${level.number}**.", Line.Kind.Note))
+        _state.update {
+            it.copy(pinned = "**${s.name}**: play it now? `yes` or `no`", taskText = s.pitch,
+                chips = listOf("yes", "no"), keys = emptyList(), parts = emptyList(), showChips = true, hinted = false)
+        }
+        setWait(Wait.Prompt)
+    }
+
+    private suspend fun answerOffer(raw: String) {
+        val s = offering ?: return
+        val a = raw.trim().lowercase()
+        append(Line.Command(id(), raw.trim()))
+        when (a) {
+            "yes", "y" -> {
+                offering = null
+                save["back"] = "${level.number}:$taskIndex"
+                levelIndex = levels.indexOf(s); taskIndex = 0
+                store()
+                enterLevel()
+            }
+            "no", "n" -> {
+                offering = null
+                append(text("No problem. It waits in the menu, under Side quests.", Line.Kind.Note))
+                setWait(Wait.Continue)
+                pages = ArrayDeque()
+                afterPages = { enterLevel() }
+            }
+            "menu" -> _events.tryEmit(UiEvent.OpenMenu)
+            else -> append(text("Type `yes` to play ${s.name} now, or `no` to go on with Level ${level.number}.", Line.Kind.Note))
         }
     }
 
@@ -284,6 +361,7 @@ class GameEngine(
             return
         }
         if (w != Wait.Prompt && w != Wait.More) return
+        if (offering != null && w == Wait.Prompt) { if (raw.isNotBlank()) answerOffer(raw); return }
         if (raw.contains('\n')) {
             append(text("That was several lines at once, probably pasted. Nothing ran. Type one command, then press Enter.", Line.Kind.Warn))
             return
@@ -363,7 +441,7 @@ class GameEngine(
         if (_state.value.wait == Wait.Done) return
         val fb = Feedback()
         val ok = task.check(a, fb)
-        if (ok) { solved(); return }
+        if (ok) { solved(a); return }
         misses++
         val msg = fb.message ?: when {
             a.interrupted || a.status == 130 -> "Stopped with Ctrl-C. Nothing broke."

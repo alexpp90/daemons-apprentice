@@ -29,14 +29,18 @@ class MainActivity : ComponentActivity() {
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { vm.filePickerClosed() }
 
-    private var stoppedAt = 0L
+    private var pausedAt = 0L
+    private var leftAt = 0L
 
-    // Level 15 sends the player to the home screen and back.
-    override fun onStop() { super.onStop(); stoppedAt = android.os.SystemClock.elapsedRealtime() }
+    // Level 15 sends the player to the home screen and back. The time away counts from leaving the
+    // screen (onPause), not from onStop: a busy phone reports onStop seconds later. It counts only
+    // when the app was really out of sight (onStop came), not for a dialog over it.
+    override fun onPause() { super.onPause(); pausedAt = android.os.SystemClock.elapsedRealtime() }
+    override fun onStop() { super.onStop(); leftAt = pausedAt.takeIf { it > 0 } ?: android.os.SystemClock.elapsedRealtime() }
     override fun onStart() {
         super.onStart()
-        if (stoppedAt > 0) vm.cameBack(android.os.SystemClock.elapsedRealtime() - stoppedAt)
-        stoppedAt = 0
+        if (leftAt > 0) vm.cameBack(android.os.SystemClock.elapsedRealtime() - leftAt)
+        leftAt = 0
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

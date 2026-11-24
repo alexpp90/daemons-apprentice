@@ -41,7 +41,17 @@ class PlayTest {
     private val guard = Guard("/g", "/s")
     /** `-e fromLevel N`: start at Level N (a saved game there), to check a late level quickly. */
     private val fromLevel = InstrumentationRegistry.getArguments().getString("fromLevel")?.toIntOrNull()
-    private val tasks: List<Task> = Levels.all.filter { it.number >= (fromLevel ?: 0) }.flatMap { it.tasks }
+    /** Every task in the order a player meets them, saying `yes` to each side quest's offer (one more step). */
+    private val tasks: List<Task> = Levels.playOrder(fromLevel ?: 0).flatMap { lv ->
+        (if (lv.side != null) listOf(offer(lv.side!!)) else emptyList()) + lv.tasks
+    }
+    private fun offer(side: String) = Task(id = "offer-$side", title = "offer", chunks = listOf("`yes`"), command = "yes",
+        chips = listOf("yes", "no"), check = { _, _ -> true }, hint1 = "-", hint2 = "-", solution = "yes", solutionWhy = "-",
+        fact = "-", how = "-")
+    private fun allDone(save: String): Boolean {
+        val done = Regex("(?m)^done=(.*)$").find(save)?.groupValues?.get(1)?.split(',') ?: return false
+        return Levels.playOrder().all { it.number.toString() in done }
+    }
     private val lastLevel = Levels.all.last().number
     private val dirs by lazy { GameDirs(ctx.filesDir) }
 
@@ -55,9 +65,15 @@ class PlayTest {
         device.pressHome()
         Thread.sleep(8_000)
         val ui = instr.uiAutomation
-        ui.adoptShellPermissionIdentity()
-        try { ctx.getSystemService(android.app.ActivityManager::class.java).moveTaskToFront(taskId, 0) }
-        finally { ui.dropShellPermissionIdentity() }
+        // A busy emulator sometimes ignores the first request (the launcher is still animating):
+        // ask again until the game is in front.
+        for (attempt in 1..3) {
+            ui.adoptShellPermissionIdentity()
+            try { ctx.getSystemService(android.app.ActivityManager::class.java).moveTaskToFront(taskId, 0) }
+            finally { ui.dropShellPermissionIdentity() }
+            if (device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.pkg(ctx.packageName)), 8_000) == true) break
+            android.util.Log.w("PlayTest", "the game did not come back to the front (attempt $attempt)")
+        }
     }
     /** Editor tasks: the text the player adds at the end of the file. */
     private fun appended(t: Task) = t.drive?.takeIf { it.startsWith("edit-append:") }?.removePrefix("edit-append:")
@@ -212,7 +228,7 @@ class PlayTest {
             if (exists("next")) tap("next")
         }
         val s = saveText()
-        if (fromLevel == null) assertTrue(s, s.contains("done=" + Levels.all.joinToString(",") { it.number.toString() }))
+        if (fromLevel == null) assertTrue(s, allDone(s))
     }
 
     // --------------------------------------------------------------- keyboard
@@ -338,7 +354,7 @@ class PlayTest {
         }
         while (!finished) { enter(); Thread.sleep(300) }
         val s = saveText()
-        if (fromLevel == null) assertTrue(s, s.contains("done=" + Levels.all.joinToString(",") { it.number.toString() }))
+        if (fromLevel == null) assertTrue(s, allDone(s))
         if (imeShownAnyway > 0) android.util.Log.w("PlayTest", "Android showed a soft keyboard in $imeShownAnyway of ${tasks.size} tasks despite the hardware-keyboard set-up")
     }
 }

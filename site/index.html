@@ -107,7 +107,7 @@ footer a { color: var(--muted); }
 
 <header class="hero">
   <div class="wrap">
-    <div class="kicker">a terminal adventure for macOS &amp; Linux</div>
+    <div class="kicker">a terminal adventure for macOS, Linux &amp; Android</div>
     <h1>The Daemon's Apprentice</h1>
     <p class="lead"><b>Learn the terminal by talking to your computer.</b> A free game in a single file, guided by Pid1, a friendly ghost. No install, no account, no internet. About three hours.</p>
     <div class="dl" id="dl">
@@ -117,6 +117,9 @@ footer a { color: var(--muted); }
       <a class="btn" id="btn-linux" href="https://github.com/alexpp90/daemons-apprentice/releases/latest/download/daemons-apprentice-linux.zip">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></svg>
         <span>Download for Linux<small>any desktop</small></span></a>
+      <a class="btn" id="btn-android" href="https://github.com/alexpp90/daemons-apprentice/releases/download/android-v1.0/daemons-apprentice-android-1.0.apk">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>
+        <span>Download for Android<small>phones &amp; tablets, Android 10+</small></span></a>
     </div>
     <p id="windows">On Windows? There's no Windows version yet. Inside WSL, the Linux version may work, but it isn't tested.</p>
     <p class="meta"><span id="ver">Latest version</span> · free and open source (GPL-3.0) · <a href="https://github.com/alexpp90/daemons-apprentice">source on GitHub</a></p>
@@ -216,6 +219,10 @@ curl -fL -o daemons-apprentice.sh https://github.com/alexpp90/daemons-apprentice
 curl -fL -o daemons-apprentice.sh https://github.com/alexpp90/daemons-apprentice/releases/latest/download/daemons-apprentice-linux.sh</pre>
       <p>Then start it with <code>bash daemons-apprentice.sh</code>. Each release lists <code>SHA256SUMS.txt</code>, so you can check the file.</p>
     </details>
+    <details id="android">
+      <summary>On an Android phone or tablet</summary>
+      <p>Download the APK, open it, and let your browser install it when Android asks (Android 10 or newer). The app asks for no permissions and never goes online. It plays in your phone's own shell, with touch alone or with a keyboard: 16 levels and a side quest, from your first command to how Android locks every app in its own room.</p>
+    </details>
   </div>
 </section>
 
@@ -251,6 +258,7 @@ curl -fL -o daemons-apprentice.sh https://github.com/alexpp90/daemons-apprentice
     <div class="dl">
       <a class="btn primary" href="https://github.com/alexpp90/daemons-apprentice/releases/latest/download/daemons-apprentice-mac.zip">Download for macOS</a>
       <a class="btn" href="https://github.com/alexpp90/daemons-apprentice/releases/latest/download/daemons-apprentice-linux.zip">Download for Linux</a>
+      <a class="btn" href="https://github.com/alexpp90/daemons-apprentice/releases/download/android-v1.0/daemons-apprentice-android-1.0.apk">Download for Android</a>
     </div>
   </div>
 </section>
@@ -268,8 +276,13 @@ curl -fL -o daemons-apprentice.sh https://github.com/alexpp90/daemons-apprentice
 // Put the download for this visitor's system first. Nothing is stored or sent.
 (function () {
   var p = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "").toLowerCase();
-  var mac = document.getElementById("btn-mac"), linux = document.getElementById("btn-linux");
-  if (p.indexOf("linux") >= 0 && p.indexOf("android") < 0) {
+  var mac = document.getElementById("btn-mac"), linux = document.getElementById("btn-linux"), android = document.getElementById("btn-android");
+  var ua = (navigator.userAgent || "").toLowerCase();
+  if (p.indexOf("android") >= 0 || ua.indexOf("android") >= 0) {
+    android.classList.add("primary"); mac.classList.remove("primary");
+    android.parentNode.insertBefore(android, mac);
+    document.getElementById("android").open = true;
+  } else if (p.indexOf("linux") >= 0) {
     linux.classList.add("primary"); mac.classList.remove("primary");
     linux.parentNode.insertBefore(linux, mac);
   } else if (p.indexOf("win") === 0 || p.indexOf("windows") >= 0) {

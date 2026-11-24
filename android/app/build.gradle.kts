@@ -1,4 +1,14 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+/**
+ * The release key lives outside every repository: a properties file named by
+ * DA_KEYSTORE_PROPERTIES, or ~/.config/daemons-apprentice/keystore.properties, with
+ * storeFile, storePassword, keyAlias and keyPassword. Without it, release builds use the debug key.
+ */
+val releaseKey: Properties? = (System.getenv("DA_KEYSTORE_PROPERTIES")
+    ?: "${System.getProperty("user.home")}/.config/daemons-apprentice/keystore.properties")
+    .let { file(it) }.takeIf { it.isFile }?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
 
 plugins {
     alias(libs.plugins.android.application)
@@ -20,8 +30,8 @@ android {
         applicationId = "io.github.alexpp90.daemonsapprentice"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1-slice"
+        versionCode = 10
+        versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=none" } }
     }
@@ -30,13 +40,24 @@ android {
         cmake { path = file("src/main/cpp/CMakeLists.txt") }
     }
 
+    signingConfigs {
+        releaseKey?.let { k ->
+            create("release") {
+                storeFile = file(k.getProperty("storeFile"))
+                storePassword = k.getProperty("storePassword")
+                keyAlias = k.getProperty("keyAlias")
+                keyPassword = k.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            // The release key is not in the repository; without it the release build is signed
-            // with the debug key so that it can still be installed for testing.
-            signingConfig = signingConfigs.getByName("debug")
+            // Without the release key (see above) the release build is signed with the debug key,
+            // so that it can still be installed for testing.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

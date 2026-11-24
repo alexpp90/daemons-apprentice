@@ -4,9 +4,19 @@ import java.io.File
 
 /** The level list, in one place (R8). */
 object Levels {
+    /** The main path, in order. */
     val all: List<Level> by lazy { listOf(Level0.level, Level1.level, Level2.level, Level3.level, Level4.level,
         Level5.level, Level6.level, Level7.level, Level8.level, Level9.level,
         Level10.level, Level11.level, Level12.level, Level13.level, Level14.level, Level15.level) }
+    /** The side quests: optional, each offered after its main level. */
+    val side: List<Level> by lazy { listOf(SideQuest1.level) }
+    /** Everything the game knows: the main path, then the side quests. */
+    val everything: List<Level> by lazy { all + side }
+
+    /** The order a player who says yes to every offer meets the levels in (from main level [from] on). */
+    fun playOrder(from: Int = 0): List<Level> = all.filter { it.number >= from }.flatMap { l ->
+        listOf(l) + side.filter { it.after == l.number && all.any { m -> m.number > l.number } }
+    }
 }
 
 /** Writes the file unless it already has exactly this text. */

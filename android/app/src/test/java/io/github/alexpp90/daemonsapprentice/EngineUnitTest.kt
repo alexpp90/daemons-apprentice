@@ -139,3 +139,65 @@ class Milestone3Test {
         root.deleteRecursively()
     }
 }
+
+/** Side quest S1: offered after Level 5, played from the menu, and back to where the main path waits. */
+class SideQuestTest {
+    private fun newGame(): Pair<io.github.alexpp90.daemonsapprentice.game.GameEngine, java.io.File> {
+        val root = java.nio.file.Files.createTempDirectory("apprentice").toFile()
+        val dirs = io.github.alexpp90.daemonsapprentice.game.GameDirs(root)
+        dirs.playground.mkdirs(); dirs.game.mkdirs()
+        return io.github.alexpp90.daemonsapprentice.game.GameEngine(dirs, HostShell(dirs.playground, dirs.home), random = kotlin.random.Random(1)) to root
+    }
+    private suspend fun io.github.alexpp90.daemonsapprentice.game.GameEngine.next() {
+        var n = 0
+        while (state.value.wait == io.github.alexpp90.daemonsapprentice.game.Wait.Continue && n++ < 60) onContinue()
+    }
+    private suspend fun io.github.alexpp90.daemonsapprentice.game.GameEngine.skipAll(count: Int) {
+        repeat(count) { next(); submit("skip") }
+    }
+
+    @Test fun theOfferAfterLevel5CanWait() = kotlinx.coroutines.runBlocking<Unit> {
+        val (g, root) = newGame()
+        g.start(); g.jumpTo(5)
+        g.skipAll(io.github.alexpp90.daemonsapprentice.game.Level5.level.tasks.size)
+        g.next()
+        assertEquals(listOf("yes", "no"), g.state.value.chips)
+        g.submit("maybe")
+        assertEquals(listOf("yes", "no"), g.state.value.chips)
+        assertTrue(g.state.value.transcript.last().toString().contains("Type `yes`"))
+        g.submit("no")
+        g.next()
+        assertEquals(6, g.state.value.level)
+        assertEquals(io.github.alexpp90.daemonsapprentice.game.Level6.level.tasks[0].title, g.state.value.taskTitle)
+        val s1 = g.state.value.levels.single { it.side }
+        assertEquals("Side quest S1", s1.name); assertTrue(!s1.done)
+        root.deleteRecursively()
+    }
+
+    @Test fun fromTheMenuAndBack() = kotlinx.coroutines.runBlocking<Unit> {
+        val (g, root) = newGame()
+        g.start(); g.jumpTo(3)
+        g.skipAll(2); g.next()
+        g.jumpTo(101); g.next()
+        assertEquals("S1", g.state.value.levelLabel)
+        g.skipAll(io.github.alexpp90.daemonsapprentice.game.SideQuest1.level.tasks.size)
+        g.next()
+        assertEquals(3, g.state.value.level)
+        assertEquals(io.github.alexpp90.daemonsapprentice.game.Level3.level.tasks[2].title, g.state.value.taskTitle)
+        val save = root.resolve("home/.apprentice-save").readText()
+        assertTrue(save, save.contains("done=101") && !save.contains("back="))
+        assertTrue(g.state.value.levels.single { it.side }.done)
+        root.deleteRecursively()
+    }
+}
+
+class PortraitTest {
+    @Test fun uptimeInWords() {
+        val f = io.github.alexpp90.daemonsapprentice.game.SideQuest1::upFor
+        assertEquals("7 minutes", f(" 22:21:34 up 7 min,  0 users,  load average: 2.38, 4.60, 3.19"))
+        assertEquals("1 hour, 23 minutes", f(" 10:00:00 up  1:23,  1 user,  load average: 0.1, 0.2, 0.3"))
+        assertEquals("3 days, 4 hours", f(" 10:00:00 up 3 days,  4:05,  0 users,  load average: 1, 1, 1"))
+        assertEquals("1 day, 0 hours", f(" 10:00:00 up 1 day, 12 min,  0 users,  load average: 1, 1, 1"))
+        assertEquals("", f("uptime: unknown"))
+    }
+}

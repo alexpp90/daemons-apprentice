@@ -38,6 +38,7 @@ class SaveFile(private val file: File) {
 
     operator fun get(key: String) = values[key]
     operator fun set(key: String, value: String) { values[key] = value }
+    fun remove(key: String) { values.remove(key) }
     fun int(key: String, default: Int = 0) = values[key]?.toIntOrNull() ?: default
 
     companion object {

@@ -3,13 +3,16 @@
 <p align="center">
   <b>Learn the terminal by talking to your computer.</b><br>
   A game in a single file, guided by a friendly ghost. No install, no account, no internet.<br>
-  For complete beginners on macOS and Linux. About three hours, and you can stop at any time.
+  For complete beginners on macOS and Linux, and now on Android phones and tablets.<br>
+  About three hours, and you can stop at any time.
 </p>
 
 <p align="center">
   <a href="https://github.com/alexpp90/daemons-apprentice/releases/latest/download/daemons-apprentice-mac.zip"><img alt="Download for macOS" src="https://img.shields.io/badge/Download_for-macOS-111111?style=for-the-badge&logo=apple&logoColor=white"></a>
   &nbsp;
   <a href="https://github.com/alexpp90/daemons-apprentice/releases/latest/download/daemons-apprentice-linux.zip"><img alt="Download for Linux" src="https://img.shields.io/badge/Download_for-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black"></a>
+  &nbsp;
+  <a href="https://github.com/alexpp90/daemons-apprentice/releases/download/android-v1.0/daemons-apprentice-android-1.0.apk"><img alt="Download for Android" src="https://img.shields.io/badge/Download_for-Android-3DDC84?style=for-the-badge&logo=android&logoColor=black"></a>
 </p>
 
 <p align="center">
@@ -130,6 +133,13 @@ That's it. The README in the folder walks you through the same steps,
 covers continuing, starting over and removing the game, and helps when
 something goes wrong.
 
+**On Android** (10 or newer): download the APK with the button above, open
+it, and let your browser install it when Android asks. The app asks for no
+permissions and never goes online. It plays in your phone's own shell, by
+touch or with a keyboard: 16 levels and a side quest, from your first
+command to the Android sandbox. [`android/README.md`](android/README.md) has
+the details and how to check the APK's signature.
+
 <details>
 <summary><b>Prefer the terminal? Download with one command</b></summary>
 
@@ -205,7 +215,11 @@ lists every variant that is tested, where it runs, and what can't be
 automated.
 
 Releases are cut by pushing a tag such as `v1.3`. CI tests the tag, packs
-the downloads and publishes the release. Bug reports and ideas are welcome
+the downloads and publishes the release.
+
+The Android app is in [`android/`](android/README.md) (Kotlin, Compose,
+Gradle): `./gradlew testDebugUnitTest` there, and `tools/device-tests.sh`
+on an emulator. Its releases are tagged `android-vX.Y`. Bug reports and ideas are welcome
 as [issues](https://github.com/alexpp90/daemons-apprentice/issues).
 
 ## License

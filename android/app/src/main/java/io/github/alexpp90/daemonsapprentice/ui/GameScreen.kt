@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.github.alexpp90.daemonsapprentice.game.GameState
 import io.github.alexpp90.daemonsapprentice.game.HelpText
+import io.github.alexpp90.daemonsapprentice.game.LevelInfo
 import io.github.alexpp90.daemonsapprentice.game.Line
 import io.github.alexpp90.daemonsapprentice.game.Wait
 
@@ -135,7 +136,7 @@ private fun TopBar(state: GameState, onMenu: () -> Unit) {
         Modifier.fillMaxWidth().background(C.bg2).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("L${state.level}", color = C.blue, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Text(state.levelLabel, color = C.blue, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         Text(if (state.taskCount > 0) "Task ${state.task.coerceAtMost(state.taskCount)}/${state.taskCount}" else state.levelTitle,
             color = C.text, fontSize = 13.sp, modifier = Modifier.testTag("progress"))
         Box(Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(C.line)) {
@@ -356,15 +357,20 @@ private fun MenuDialog(state: GameState, onClose: () -> Unit, onReset: () -> Uni
         containerColor = C.card,
         title = { Text("Menu", color = C.text) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.levels.forEach { l ->
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                val (sides, mains) = state.levels.partition { it.side }
+                @Composable fun entry(l: LevelInfo, short: String) {
                     val mark = when { l.current -> "▸"; l.done -> "✓"; else -> " " }
-                    Text("$mark  Level ${l.number}  ${l.title}", color = if (l.current) C.blue else C.text, fontFamily = Mono, fontSize = 14.sp,
+                    Text("$mark  $short  ${l.title}", color = if (l.current) C.blue else C.text, fontFamily = Mono, fontSize = 14.sp,
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
                             .clickable(enabled = state.wait != Wait.Busy) { onLevel(l.number) }
                             .padding(vertical = 8.dp, horizontal = 4.dp).testTag("level:${l.number}"))
                 }
-                Text("Levels ${state.levels.size} to 15 come in the next builds.", color = C.muted, fontSize = 13.sp)
+                mains.forEach { entry(it, "Level ${it.number}") }
+                if (sides.isNotEmpty()) {
+                    Text("Side quests (optional)", color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                    sides.forEach { entry(it, it.name.removePrefix("Side quest ")) }
+                }
                 if (confirm) Text("Start over? This deletes your progress and the playground, nothing else.", color = C.amber, fontSize = 13.sp)
             }
         },

@@ -9,7 +9,7 @@ import org.junit.Test
 
 /** Rules every task must follow (REQUIREMENTS R3, R4, R5, R28). */
 class LevelDataTest {
-    private val levels = Levels.all
+    private val levels = Levels.everything
     private val guard = Guard("/game", "/save")
 
     @Test fun everyTaskIsComplete() {
@@ -56,9 +56,19 @@ class LevelOrderTest {
         assertTrue(Levels.all.map { it.number } == (0 until Levels.all.size).toList())
     }
 
+    /** Side quests: numbers above 100, a name, offered after a main level that has a next one. */
+    @Test fun sideQuestsHangOnTheMainPath() {
+        for (s in Levels.side) {
+            assertTrue(s.number > 100 && s.side != null && s.pitch.isNotBlank())
+            assertTrue("${s.side}: after ${s.after}", Levels.all.any { it.number == s.after } && s.after!! < Levels.all.last().number)
+        }
+        val order = Levels.playOrder().map { it.label }
+        assertTrue(order.toString(), order.indexOf("S1") == order.indexOf("L5") + 1)
+    }
+
     @Test fun hardCharactersAreOfferedOnTheKeyBar() {
         // A solution with | ~ { } > * must name it in `keys`, so the key bar highlights it and the typing help appears.
-        for (lv in Levels.all) for (t in lv.tasks.filter { it.solve == null && it.event == null }) // placeholders, no command
+        for (lv in Levels.everything) for (t in lv.tasks.filter { it.solve == null && it.event == null }) // placeholders, no command
             for (c in listOf("|", "~", "{", "}", ">", "*", "$", ";", "\"", "(", ")", "%", "=", "&"))
                 if (t.solution.contains(c)) assertTrue("${t.id}: '$c' not in keys", c in t.keys)
     }

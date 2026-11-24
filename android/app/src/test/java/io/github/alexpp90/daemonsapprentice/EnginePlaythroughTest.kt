@@ -56,7 +56,7 @@ class HostShell(start: File, home: File = start) : Shell {
     init {
         val bin = Files.createTempDirectory("fakebin").toFile()
         File(bin, "getprop").apply {
-            writeText("#!/bin/sh\ncase \"$1\" in ro.build.version.release) echo 17;; ro.product.model) echo Host computer;; ro.zygote) echo zygote64;; ro.build.version.security_patch) echo 2026-08-05;; *) echo;; esac\n")
+            writeText("#!/bin/sh\ncase \"$1\" in ro.build.version.release) echo 17;; ro.product.model) echo Host computer;; ro.zygote) echo zygote64;; ro.build.version.security_patch) echo 2026-08-05;; ro.build.version.sdk) echo 37;; ro.product.manufacturer) echo Host maker;; ro.boot.verifiedbootstate) echo orange;; *) echo;; esac\n")
             setExecutable(true)
         }
         val pb = ProcessBuilder("bash", "--norc", "--noprofile", "--noediting", "-i").redirectErrorStream(true).directory(start)
@@ -140,8 +140,14 @@ class EnginePlaythroughTest {
     @Test fun allLevelsPlayThroughWithTheirSolutions() = runBlocking<Unit> {
         val (g, root) = newGame()
         g.start()
-        for (lv in Levels.all) for (t in lv.tasks) {
+        for (lv in Levels.playOrder()) for ((i, t) in lv.tasks.withIndex()) {
             g.continueToPrompt()
+            if (lv.side != null && i == 0) {
+                // The offer after its main level: say yes.
+                assertEquals("offer of ${lv.side}", listOf("yes", "no"), g.state.value.chips)
+                g.submit("yes")
+                g.continueToPrompt()
+            }
             assertEquals("${t.id}: prompt", Wait.Prompt, g.state.value.wait)
             assertEquals("${t.id}", t.title, g.state.value.taskTitle)
             val d = t.drive ?: ""
@@ -174,8 +180,13 @@ class EnginePlaythroughTest {
         g.continueToPrompt()
         assertEquals(Wait.Done, g.state.value.wait)
         val save = root.resolve("home/.apprentice-save").readText()
-        assertTrue(save, save.contains("done=" + Levels.all.joinToString(",") { it.number.toString() }))
+        assertTrue(save, save.contains("done=" + Levels.playOrder().joinToString(",") { it.number.toString() }))
         assertTrue(save, save.contains("badge=gold"))
+        // The portrait: the answers the computer could give (service, toybox and pm are the phone's).
+        val portrait = root.resolve("home/playground/portrait/my-phone.txt").readText()
+        for (row in listOf("Android version: 17 (API level 37)", "Phone: Host computer, by Host maker", "Linux kernel: ",
+            "Awake for: ", "Processor cores: ", "Memory (RAM): ", "Storage for apps: ", "Verified boot: orange", "    \$ uname -a"))
+            assertTrue("$row in\n$portrait", portrait.contains(row))
         assertTrue(save, save.contains("flags=hidden_in_plain_sight"))
         root.deleteRecursively()
     }

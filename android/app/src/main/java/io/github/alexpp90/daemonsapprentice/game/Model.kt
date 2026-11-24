@@ -90,15 +90,32 @@ class Task(
     val allowSave: Boolean = false,
     /** Solved by something the player does outside the terminal: `away` = to the home screen and back. */
     val event: String? = null,
+    /**
+     * After the task is solved: works something out in the game's shell (Portrait of Your Phone writes
+     * its answer into the portrait) and returns a line to show before the fact, or null.
+     */
+    val noted: (suspend TaskContext.(Attempt) -> String?)? = null,
     /** Commands that only look around: never called wrong (R17). */
     val lookAround: Set<String> = setOf("ls", "pwd", "cat", "echo", "date", "whoami"),
 )
 
 class Level(
+    /** The level's number; a side quest has one above 100 (S1 is 101), used only inside the save file. */
     val number: Int,
     val title: String,
     val intro: List<String>,
     val tasks: List<Task>,
     val outro: List<String>,
     val explore: List<String>,
-)
+    /** A side quest's short name (`S1`); null for the main path. */
+    val side: String? = null,
+    /** A side quest is offered when this main level is complete. */
+    val after: Int? = null,
+    /** A side quest's offer: what it is, in a few lines. */
+    val pitch: String = "",
+) {
+    /** "Level 4" or "Side quest S1". */
+    val name: String get() = if (side != null) "Side quest $side" else "Level $number"
+    /** The short label in the header: "L4" or "S1". */
+    val label: String get() = side ?: "L$number"
+}
