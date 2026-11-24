@@ -3056,32 +3056,119 @@ tq_tlslab_port() {
   p=$(cat "$TQ_PG/netsec/.tlsport" 2>/dev/null)
   case "$p" in ''|*[!0-9]*) echo 18620 ;; *) echo "$p" ;; esac
 }
+# The server: `openssl s_server` where it can bind 127.0.0.1 alone (OpenSSL
+# 1.1+). The LibreSSL of macOS takes only a port for -accept and would
+# listen on every network interface, so there (or with TQ_TLSLAB_PERL set)
+# a small perl server with IO::Socket::SSL serves the page instead.
 tq_tlslab_start() {
-  local d="$TQ_PG/netsec" cand pid tries
+  local d="$TQ_PG/netsec"
   tq_tlslab_alive && return 0
   [ -f "$d/tls/server.crt" ] && [ -f "$d/tls/server.key" ] || return 1
   command -v openssl >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || return 1
   rm -f "$d/.tlspid"
+  if [ -z "${TQ_TLSLAB_PERL:-}" ] && ! openssl version 2>/dev/null | grep -q LibreSSL; then
+    tq_tlslab_sserver && return 0
+  fi
+  tq_tlslab_perl && return 0
+  [ -f "$d/.tlsport" ] || echo "18620" > "$d/.tlsport"
+  return 1
+}
+# Up to 10 s for the page to answer (a first start can be slow, for
+# example under Rosetta 2) while server process $1 lives; $2 its port.
+tq_tlslab_wait() {
+  local tries=0
+  while [ "$tries" -lt 200 ]; do
+    kill -0 "$1" 2>/dev/null || return 1
+    if curl -sk --max-time 1 "https://127.0.0.1:$2/index.txt" 2>/dev/null | grep -q "HTTPS OK"; then
+      return 0
+    fi
+    sleep 0.05; tries=$((tries + 1))
+  done
+  return 1
+}
+tq_tlslab_sserver() {
+  local d="$TQ_PG/netsec" cand pid
   cand=18620
   while [ "$cand" -lt 18720 ]; do
     ( cd "$d/tls_root" && exec openssl s_server -accept "127.0.0.1:$cand" \
         -cert "$d/tls/server.crt" -key "$d/tls/server.key" -WWW \
         </dev/null >/dev/null 2>&1 ) &
     pid=$!
-    tries=0
-    while [ "$tries" -lt 25 ]; do
-      kill -0 "$pid" 2>/dev/null || break
-      if curl -sk --max-time 1 "https://127.0.0.1:$cand/index.txt" 2>/dev/null | grep -q "HTTPS OK"; then
-        echo "$cand" > "$d/.tlsport"
-        echo "$pid" > "$d/.tlspid"
-        return 0
-      fi
-      sleep 0.05; tries=$((tries + 1))
-    done
+    if tq_tlslab_wait "$pid" "$cand"; then
+      echo "$cand" > "$d/.tlsport"
+      echo "$pid" > "$d/.tlspid"
+      return 0
+    fi
     kill "$pid" 2>/dev/null
     cand=$((cand + 1))
   done
-  [ -f "$d/.tlsport" ] || echo "18620" > "$d/.tlsport"
+  return 1
+}
+tq_tlslab_perl() {
+  local d="$TQ_PG/netsec" pid p tries
+  command -v perl >/dev/null 2>&1 || return 1
+  perl -MIO::Socket::SSL -e 1 >/dev/null 2>&1 || return 1
+  rm -f "$d/.tlsport.new"
+  perl - "$d/.tlsport.new" "$d/tls/server.crt" "$d/tls/server.key" "$d/tls_root" </dev/null >/dev/null 2>&1 <<'PL' &
+use strict; use warnings; use IO::Socket::INET; use IO::Socket::SSL; use IO::Select;
+my ($port_file, $crt, $key, $root) = @ARGV;
+my $ctx = IO::Socket::SSL::SSL_Context->new(SSL_server => 1,
+  SSL_cert_file => $crt, SSL_key_file => $key) or exit 1;
+my ($port, $srv);
+for (my $cand = 18620; $cand < 18720; $cand += 1) {
+  my $s = IO::Socket::INET->new(LocalAddr => '127.0.0.1', LocalPort => $cand,
+                                Listen => 8, ReuseAddr => 1, Proto => 'tcp');
+  if ($s) { $port = $cand; $srv = $s; last; }
+}
+exit 1 unless $srv;
+open(my $bf, '>', $port_file) or exit 1; print $bf "$port\n"; close $bf;
+my $sel = IO::Select->new($srv);
+my $end = time + 3600;
+while (time < $end) {
+  for my $l ($sel->can_read(5)) {
+    my $c = $l->accept or next;
+    eval {
+      local $SIG{ALRM} = sub { die "timeout\n" };
+      alarm 5;
+      if (IO::Socket::SSL->start_SSL($c, SSL_server => 1, SSL_reuse_ctx => $ctx)) {
+        my $first = <$c>;
+        $first = "" unless defined $first;
+        while (my $h = <$c>) { last if $h eq "\r\n" || $h eq "\n"; }
+        my ($status, $body) = ("404 Not Found", "Not found\n");
+        my @parts = split(/ /, $first);
+        my $name = (($parts[1] || "") ne "" && substr($parts[1], 0, 1) eq "/") ? substr($parts[1], 1) : "";
+        if (($parts[0] || "") eq "GET" && $name ne "" && substr($name, 0, 1) ne "."
+            && index($name, "/") < 0 && index($name, "..") < 0) {
+          my $f = "$root/$name";
+          if (-f $f && open(my $fh, '<', $f)) {
+            local $/; $body = <$fh>; close $fh; $status = "200 OK";
+          }
+        }
+        print $c "HTTP/1.0 $status\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n$body";
+      }
+      alarm 0;
+    };
+    alarm 0;
+    close $c;
+  }
+}
+PL
+  pid=$!
+  p=""
+  tries=0
+  while [ "$tries" -lt 200 ] && [ -z "$p" ]; do
+    kill -0 "$pid" 2>/dev/null || break
+    p=$(cat "$d/.tlsport.new" 2>/dev/null)
+    [ -n "$p" ] || { sleep 0.05; tries=$((tries + 1)); }
+  done
+  rm -f "$d/.tlsport.new"
+  case "$p" in ''|*[!0-9]*) kill "$pid" 2>/dev/null; return 1 ;; esac
+  if tq_tlslab_wait "$pid" "$p"; then
+    echo "$p" > "$d/.tlsport"
+    echo "$pid" > "$d/.tlspid"
+    return 0
+  fi
+  kill "$pid" 2>/dev/null
   return 1
 }
 
@@ -10409,7 +10496,7 @@ Type:
   `  "VERIFY_SESSION=on" > server.conf`
 EOF
 ;;
-solution) echo "printf '%s\n' \"BLOCK_DOTFILES=on\" \"BLOCK_TRAVERSAL=on\" \"VERIFY_SESSION=on\" > server.conf" ;;
+solution) printf '%s\n' "printf '%s\\n' \"BLOCK_DOTFILES=on\" \"BLOCK_TRAVERSAL=on\" \"VERIFY_SESSION=on\" > server.conf" ;;
 fact) echo 'All three switches are live. Now attack your own fixes to be sure!' ;;
 how) echo "server.conf enabled BLOCK_DOTFILES, BLOCK_TRAVERSAL and VERIFY_SESSION" ;;
 esac; }

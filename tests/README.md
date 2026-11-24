@@ -90,6 +90,7 @@ computers, and at which of those differences have caused bugs or could.
 | Intel code on Apple silicon (Rosetta 2) | the closest thing to an Intel Mac on a new one | weekly (`@quick`, if the runner has Rosetta) and `full` locally |
 | macOS 14, 15 and 26 | each macOS version updates the BSD tools and LibreSSL a little | weekly (`compat.yml`) and by hand before a release |
 | Ubuntu 22.04 and 24.04, and Linux on ARM (arm64) | older coreutils and util-linux; ARM laptops | weekly |
+| The HTTPS lab's server (Level 19) | `openssl s_server` of OpenSSL binds `127.0.0.1` alone; the Mac's LibreSSL cannot, so there the game runs a small perl server | the Mac jobs use the perl server; on Linux the `full` job plays with it (`TQ_TLSLAB_PERL=1`), the others with `s_server` |
 | Two different pseudo-terminal drivers | a bug in one driver can't hide a bug in the game | Bash driver everywhere; Python driver on Linux, every push |
 | BSD `script` vs util-linux `script` | the pseudo-terminal programs behave differently (stdin, flushing) | covered by the Mac and Linux jobs |
 | No colours (`NO_COLOR`, `TERM=dumb`) | accessibility, and terminals without colour | every run |

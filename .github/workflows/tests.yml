@@ -38,9 +38,11 @@ jobs:
           - name: Linux - every level from a fresh home, every scenario
             os: ubuntu-latest
             run: bash tests/autoplay.sh @standard
+          # With TQ_TLSLAB_PERL=1 Level 19's HTTPS lab runs the perl server
+          # the Mac uses (its LibreSSL s_server cannot bind 127.0.0.1 only).
           - name: Linux - the whole game in one home
             os: ubuntu-latest
-            run: bash tests/autoplay.sh full
+            run: TQ_TLSLAB_PERL=1 bash tests/autoplay.sh full
           - name: Linux - second driver (Python pty)
             os: ubuntu-latest
             run: python3 tests/autoplay.py @standard
