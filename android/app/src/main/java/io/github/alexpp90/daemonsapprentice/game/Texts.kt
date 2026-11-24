@@ -3,7 +3,7 @@ package io.github.alexpp90.daemonsapprentice.game
 import kotlin.random.Random
 
 object Pid1 {
-    /** Pid1's one-line moods: real `ps` process states (desktop CONCEPT "Mascot"). */
+    /** Pid1's one-line moods: real `ps` process states, as in the desktop game. */
     const val SLEEPING = "~( o_o )~"
     const val RUNNING = "~( ^_^ )~"
     const val INSPECTING = "~( o_O )~"

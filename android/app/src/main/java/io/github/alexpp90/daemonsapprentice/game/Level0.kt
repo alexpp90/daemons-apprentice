@@ -2,7 +2,7 @@ package io.github.alexpp90.daemonsapprentice.game
 
 import java.io.File
 
-/** Level 0, "Hello, Terminal" (ANDROID_CURRICULUM.md): the vertical slice. */
+/** Level 0, "Hello, Terminal": the vertical slice. */
 object Level0 {
 
     /** A short history of computers, one event per line (facts checked for the desktop game, RESEARCH.md 1b). */

@@ -1,6 +1,6 @@
 package io.github.alexpp90.daemonsapprentice.game
 
-/** Level 1, "Talking to the Shell" (ANDROID_CURRICULUM.md). */
+/** Level 1, "Talking to the Shell". */
 object Level1 {
     private val home: suspend TaskContext.() -> Unit = { goTo(dirs.playground) }
 

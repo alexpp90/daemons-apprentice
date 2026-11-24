@@ -3,7 +3,7 @@ package io.github.alexpp90.daemonsapprentice.game
 import io.github.alexpp90.daemonsapprentice.engine.Shell
 import java.io.File
 
-/** Where things live in the app's private storage (ANDROID_CONCEPT "Folders"). */
+/** Where things live in the app's private storage. */
 class GameDirs(filesDir: File) {
     val home = File(filesDir, "home")
     val playground = File(home, "playground")

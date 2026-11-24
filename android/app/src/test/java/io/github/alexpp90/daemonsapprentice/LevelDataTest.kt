@@ -7,7 +7,7 @@ import io.github.alexpp90.daemonsapprentice.game.Levels
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Rules every task must follow (REQUIREMENTS R3, R4, R5, R28). */
+/** Rules every task must follow (the game's requirements R3, R4, R5, R28). */
 class LevelDataTest {
     private val levels = Levels.everything
     private val guard = Guard("/game", "/save")

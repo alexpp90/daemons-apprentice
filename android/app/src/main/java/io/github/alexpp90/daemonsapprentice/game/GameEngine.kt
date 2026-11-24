@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.update
 import java.io.File
 import kotlin.random.Random
 
-/** A line of the transcript (ANDROID_CONCEPT "The screen"). */
+/** A line of the transcript. */
 sealed interface Line {
     val id: Long
     data class Text(override val id: Long, val text: String, val kind: Kind = Kind.Normal) : Line

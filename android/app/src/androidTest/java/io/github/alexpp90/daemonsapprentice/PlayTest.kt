@@ -292,7 +292,7 @@ class PlayTest {
         for ((i, t) in tasks.withIndex()) {
             step = "keys-${t.id}"
             toPrompt(if (i == 0) 40_000 else 15_000)
-            // The rule (ANDROID_CONCEPT): the key bar shows only while a soft keyboard is visible, and
+            // The rule: the key bar shows only while a soft keyboard is visible, and
             // chips only with a soft keyboard or after hint. Android on an emulator sometimes brings a
             // soft keyboard back mid-test; that is counted and reported, not a failure of the game.
             val ime = imeVisible()

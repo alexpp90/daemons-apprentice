@@ -16,7 +16,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 
-/** The phone's own shell on a pseudo-terminal, as the game uses it (ANDROID_CONCEPT "How a command runs"). */
+/** The phone's own shell on a pseudo-terminal, as the game uses it. */
 @RunWith(AndroidJUnit4::class)
 class ShellSessionTest {
     private lateinit var root: File
