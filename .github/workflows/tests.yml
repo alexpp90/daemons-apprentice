@@ -38,9 +38,15 @@ jobs:
           - name: Linux - every level from a fresh home, every scenario
             os: ubuntu-latest
             run: bash tests/autoplay.sh @standard
+          # With TQ_TLSLAB_PERL=1 Level 19's HTTPS lab runs the perl server
+          # the Mac uses (its LibreSSL s_server cannot bind 127.0.0.1 only).
+          # Ubuntu's perl needs IO::Socket::SSL for it; the Mac's has it.
           - name: Linux - the whole game in one home
             os: ubuntu-latest
-            run: bash tests/autoplay.sh full
+            run: >-
+              sudo apt-get update -qq && sudo apt-get install -y -qq libio-socket-ssl-perl &&
+              perl -MIO::Socket::SSL -e 1 &&
+              TQ_TLSLAB_PERL=1 bash tests/autoplay.sh full
           - name: Linux - second driver (Python pty)
             os: ubuntu-latest
             run: python3 tests/autoplay.py @standard

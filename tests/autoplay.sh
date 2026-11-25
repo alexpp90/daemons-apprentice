@@ -104,11 +104,11 @@ start_game() {
     cd "$HOMEDIR" || exit 1
     if [ "$SCRIPT_KIND" = util ]; then
       exec env -i HOME="$HOMEDIR" PATH="$GPATH" TERM=xterm-256color LANG="$GLANG" \
-        USER="${USER:-player}" TMPDIR="$HOMEDIR" TQ_TEST=1 $NOCLT_ENV ${BASH_COMPAT:+BASH_COMPAT=$BASH_COMPAT} "$@" \
+        USER="${USER:-player}" TMPDIR="$HOMEDIR" TQ_TEST=1 $NOCLT_ENV ${BASH_COMPAT:+BASH_COMPAT=$BASH_COMPAT} ${TQ_TLSLAB_PERL:+TQ_TLSLAB_PERL=1} "$@" \
         script -q -f -c "$GBASH -c \"$inner\"" /dev/null
     else
       exec env -i HOME="$HOMEDIR" PATH="$GPATH" TERM=xterm-256color LANG="$GLANG" \
-        USER="${USER:-player}" TMPDIR="$HOMEDIR" TQ_TEST=1 $NOCLT_ENV ${BASH_COMPAT:+BASH_COMPAT=$BASH_COMPAT} "$@" \
+        USER="${USER:-player}" TMPDIR="$HOMEDIR" TQ_TEST=1 $NOCLT_ENV ${BASH_COMPAT:+BASH_COMPAT=$BASH_COMPAT} ${TQ_TLSLAB_PERL:+TQ_TLSLAB_PERL=1} "$@" \
         script -q /dev/null $GRUN -c "$inner"
     fi
   ) > "$LOG" 2>&1 &
