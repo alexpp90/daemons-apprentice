@@ -58,17 +58,20 @@ an AI agent that is about to make a mistake.
   tells you what each part of it does. It builds one habit from the first
   minute: *never run a command you don't understand*, whoever suggests
   it. A website, a chat, an AI. Or this game.
-- **Small steps, big moments.** 238 tasks across 6 rated chapters (Beginner,
-  Intermediate, Advanced), each one small enough to manage. One line makes
-  365 folders, one loop cracks a password, and real local labs teach you
-  how attackers think so you can defend yourself.
+- **Small steps, big moments.** 270 tasks across 8 rated chapters (Beginner,
+  Intermediate, Advanced) plus 32 tasks in 3 optional side quests, each one
+  small enough to manage. One line makes 365 folders, one loop cracks a
+  password, real local labs teach you how attackers think, and interactive
+  simulations bring core computer science algorithms to life.
 - **Stuck? Help is one word away.** `hint` gives you a nudge, `help` lists
   everything, and `keys` shows how to type `{`, `|` or `~` on *your*
   keyboard (US and German, Mac and Linux). The game notices when a key is
   giving you trouble.
-- **You keep what you learn.** Each task you solve adds its command to your
-  own `CHEATSHEET.md`. You also collect 24 flags and earn a certificate at
-  the end.
+- **You keep what you learn — and level up as you play.** Each solved task
+  adds its command to your own `CHEATSHEET.md`, earns XP toward 8 ranks
+  (`Booting Apprentice` to `Grand Daemon`), tracks clean-solve streaks, and
+  unlocks 12 trophies saved in `TROPHIES.md` (`trophies` in-game). You also
+  collect 31 flags and earn a signed `CERTIFICATE.txt` at the end.
 - **It can't hurt your computer.** See [Safe by design](#safe-by-design).
 
 <table>
@@ -92,7 +95,7 @@ an AI agent that is about to make a mistake.
 
 ## The journey
 
-Six chapters rated **Beginner**, **Intermediate**, and **Advanced**, plus two optional side quests:
+Eight chapters rated **Beginner**, **Intermediate**, and **Advanced**, plus three optional side quests:
 
 ### Chapter 1: Terminal Basics (`Beginner`)
 
@@ -145,6 +148,20 @@ Six chapters rated **Beginner**, **Intermediate**, and **Advanced**, plus two op
 | 17 | **Web & HTTP Exploitation** | Fingerprint a local HTTP target, grab exposed secrets, exploit `../` path traversal, IDOR and forged cookies, then patch the server and verify every fix. |
 | 18 | **Terminal & Supply-Chain Traps** | Unmask hidden terminal escape bytes (`cat -v`), catch a Tar Slip archive (`tar -tf`), audit SSH keys and backdoors, and sign/verify releases with `openssl`. |
 | 19 | **Network Exposure & TLS Defense** | Lock down `0.0.0.0` listeners to `127.0.0.1`, see why outbound callbacks bypass inbound firewalls, inspect HTTPS certs, and pin with `--cacert` instead of `-k`. |
+| S3 | *Security Checkup of Your Machine* | Optional side quest (after Level 19): read-only security baseline of your own computer (groups, umask, `PATH`, listening ports, home permissions, binary/kernel protections) saved into `security-report.txt`. |
+
+### Chapter 7: Algorithms & How Computers Think (`Intermediate`)
+
+| | Level | What you'll do |
+|---|---|---|
+| 20 | **Bits, Inodes & Compression** | Read raw bytes (`od`) and UTF-8 emoji hex, unmask disguised files by magic bytes (`file`), explore inodes & hard links (`ln`), compare entropy with `gzip`, and read unified `diff -u` patches. |
+| 21 | **Algorithms to Live By** | Run live terminal simulations of Linear vs Binary Search (`O(n)` vs `O(log n)`), FIFO vs LRU caching, SJF scheduling & thrashing, the 37% Optimal Stopping rule, Explore vs Exploit, Exponential Backoff, and Overfitting. |
+
+### Chapter 8: Blue Team Incident Response (`Advanced`)
+
+| | Level | What you'll do |
+|---|---|---|
+| 22 | **The Midnight Breach** | End-to-end Blue Team capstone: triage an incident folder, hunt `../` traversal in web logs, unmask a disguised webshell by magic bytes & SHA-256 IOC hash, inspect safely with `cat -v`, decode staged exfiltration, quarantine malware, evict cron & SSH backdoors, and file a post-mortem report. |
 
 Know a bit already? The **placement check** finds the right level for you,
 and the level menu lets you jump anywhere.
