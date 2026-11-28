@@ -33,22 +33,25 @@ if [ -z "${BASH_VERSION:-}" ]; then
   exit 1
 fi
 
-TQ_VERSION="1.4"
+TQ_VERSION="1.5"
 TQ_NAME="THE DAEMON'S APPRENTICE"
 TQ_PG="$HOME/apprentice-playground"
 TQ_SAVE="$HOME/.apprentice-save"
 TQ_SELF="$0"
-TQ_LEVELS="0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19"
-TQ_NLEVELS=20
+TQ_PSIGN='$'   # the sign at the end of the prompt; # for root (tq_init)
+TQ_PERL=""     # perl, if there is one (tq_init)
+TQ_LEVELS="0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22"
+TQ_NLEVELS=23
 # Chapters group the levels by theme and difficulty (Beginner, Intermediate,
 # Advanced). See tq_chapter() and tq_level_chapter().
-TQ_CHAPTERS="1 2 3 4 5 6"
-# Side quests (R21, R22): optional, off the main path. Each is a level
+TQ_CHAPTERS="1 2 3 4 5 6 7 8"
+# Side quests (R21, R22, R41): optional, off the main path. Each is a level
 # function tq_L<id> like the others, plus "after": the level whose end
 # offers it. They are always reachable in the level menu.
-TQ_SIDE="S1 S2"
+TQ_SIDE="S1 S2 S3"
 TQ_BUILD_OS="mac"   # built by tools/build.sh, edit src/ instead
 TQ_CHEAT="$TQ_PG/CHEATSHEET.md"
+TQ_TROPHY_FILE="$TQ_PG/TROPHIES.md"
 
 # ===========================================================================
 #  Basics: system, colours, output helpers
@@ -82,7 +85,7 @@ tq_check_build_os() {
 
 tq_init_colors() {
   C_0="" C_B="" C_DIM="" C_CMD="" C_OK="" C_BAD="" C_WARN="" C_HEAD="" C_ART="" C_MAX=""
-  C_PROMPT="" C_PROMPT0="" TQ_OUT_PRE="  | "
+  C_PROMPT="" C_PROMPT0="" TQ_OUT_PRE="  | " TQ_ERR_PRE="  | "
   TQ_COLOR=0
   if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
     local n
@@ -97,7 +100,7 @@ tq_init_colors() {
       # The prompt goes through readline: \001 and \002 mark the colour
       # codes as invisible, so that long lines still wrap correctly.
       C_PROMPT=$'\001\033[1;32m\002'; C_PROMPT0=$'\001\033[0m\002'
-      TQ_OUT_PRE="  ${C_DIM}|${C_0} "
+      TQ_OUT_PRE="  ${C_DIM}|${C_0} " TQ_ERR_PRE="  ${C_BAD}|${C_0} "
     fi
   fi
 }
@@ -368,6 +371,9 @@ tq_cheer() {
 TQ_LEVEL=0 TQ_TASK=1 TQ_SOLVED="" TQ_SKIPPED="" TQ_FLAGS="" TQ_DONE_LEVELS="" TQ_BADGE=""
 # Side quests: the finished ones, and where the main path waits meanwhile.
 TQ_DONE_SIDE="" TQ_BACK="" TQ_BACK_TASK=""
+# Gamification state: XP, clean-solve streaks, and unlocked trophies (R42).
+TQ_XP=0 TQ_STREAK=0 TQ_BEST_STREAK=0 TQ_TROPHIES=""
+TQ_ALL_TROPHIES="first_spark curious_cat streak_5 streak_10 manual_reader guard_tester hacker_eye algo_sage blue_team side_explorer all_sides pid1_secret"
 
 tq_save() {
   {
@@ -383,6 +389,10 @@ tq_save() {
     [ -n "$TQ_DONE_SIDE" ] && echo "side_done=$TQ_DONE_SIDE"
     [ -n "$TQ_BACK" ] && { echo "back=$TQ_BACK"; echo "back_task=${TQ_BACK_TASK:-1}"; }
     [ -n "$TQ_BADGE" ] && echo "badge=$TQ_BADGE"
+    echo "xp=$TQ_XP"
+    echo "streak=$TQ_STREAK"
+    echo "best_streak=$TQ_BEST_STREAK"
+    [ -n "$TQ_TROPHIES" ] && echo "trophies=$TQ_TROPHIES"
     echo "saved=$(date '+%Y-%m-%d %H:%M')"
   } > "$TQ_SAVE.tmp" 2>/dev/null && mv -f "$TQ_SAVE.tmp" "$TQ_SAVE" 2>/dev/null
 }
@@ -404,6 +414,10 @@ tq_load() {
       back)        tq_has "$TQ_LEVELS" "$v" && TQ_BACK=$v ;;
       back_task)   case "$v" in [1-9]|[1-9][0-9]) TQ_BACK_TASK=$v ;; esac ;;
       badge)       TQ_BADGE=$(printf '%s' "$v" | tr -cd 'A-Za-z0-9 ._!-' | cut -c1-30) ;;
+      xp)          case "$v" in ''|*[!0-9]*) ;; *) TQ_XP=$v ;; esac ;;
+      streak)      case "$v" in ''|*[!0-9]*) ;; *) TQ_STREAK=$v ;; esac ;;
+      best_streak) case "$v" in ''|*[!0-9]*) ;; *) TQ_BEST_STREAK=$v ;; esac ;;
+      trophies)    TQ_TROPHIES=$(tq_clean_list "$v") ;;
     esac
   done < "$TQ_SAVE"
   # Version 1.0 numbered the tasks differently (R17 split many of them):
@@ -517,6 +531,14 @@ tq_pg_make() {
 This is the playground of The Daemon's Apprentice.
 The game builds everything in here and can rebuild it at any time.
 Feel free to break things in here. That is what it is for.
+EOF
+  fi
+  if [ ! -f "$TQ_PG/.pid1-secret" ]; then
+    cat > "$TQ_PG/.pid1-secret" <<'EOF'
+Psst -- you found Pid1's hidden note!
+Curiosity is the #1 skill of every great engineer and defender.
+In a real terminal, `ls -a` reveals what graphical windows hide.
+Keep peeking behind curtains!   -- PID 1 (STAT R: winking)
 EOF
   fi
 }
@@ -777,6 +799,38 @@ tq_cheat_entry() {
     tS1_7) echo 'df -h ~|The disk your home folder is on: size, and how full' ;;
     tS1_8) echo 'ls ~ \| wc -l|Count the things in a folder' ;;
     tS1_9) echo 'ls -a ~ \| wc -l|The same, hidden things included' ;;
+    t20_1) echo 'od -tx1 -tc FILE|Show raw hex bytes and characters inside a file' ;;
+    t20_2) echo 'od -tx1 utf8.txt|See how UTF-8 stores an emoji in 4 bytes' ;;
+    t20_3) echo 'file FILE|Identify real file type by magic bytes, not extension' ;;
+    t20_4) echo 'cat photo.jpg|Read a disguised file after checking magic bytes' ;;
+    t20_5) echo 'ls -i FILE|Show a file'\''s inode number (its real disk ID)' ;;
+    t20_6) echo 'ln FILE TWIN|Create a hard link: two names for one inode' ;;
+    t20_7) echo 'rm FILE|Unlink one name; data stays while another link exists' ;;
+    t20_8) echo 'cat TWIN|Verify the hard-linked data survived unlinking' ;;
+    t20_9) echo 'gzip -c pattern.txt \| wc -c|Repeating patterns compress dramatically' ;;
+    t20_10) echo 'gzip -c random.bin \| wc -c|High-entropy randomness cannot be compressed' ;;
+    t20_11) echo 'diff -u v1.txt v2.txt|Unified diff: how Git tracks changes line by line' ;;
+    t21_1) echo 'bash search_demo.sh linear KEY|Linear scan O(n): checks items one by one' ;;
+    t21_2) echo 'bash search_demo.sh binary KEY|Binary search O(log n): halves work each step' ;;
+    t21_3) echo 'bash cache_sim.sh fifo|FIFO cache evicts oldest item even if still hot' ;;
+    t21_4) echo 'bash cache_sim.sh lru|LRU cache keeps recently used items (higher hits)' ;;
+    t21_5) echo 'bash sched_sim.sh fifo|FIFO scheduling: one huge job stalls short ones' ;;
+    t21_6) echo 'bash sched_sim.sh sjf|Shortest Job First cuts average wait time sharply' ;;
+    t21_7) echo 'bash stopping_sim.sh|37% rule (1/e): look first, then leap on the best' ;;
+    t21_8) echo 'bash bandit_sim.sh|Explore early, exploit late (multi-armed bandit)' ;;
+    t21_9) echo 'bash backoff_sim.sh|Exponential backoff: double wait after each retry' ;;
+    t21_10) echo 'bash overfit_demo.sh|Occam'\''s razor: simpler models beat overfitting' ;;
+    t21_11) echo 'Algorithms to Live By quiz|Match real-world and OS problems to algorithms' ;;
+    t22_1) echo 'find . -maxdepth 3 \| sort|Triage: list every file including hidden dotfiles' ;;
+    t22_2) echo 'grep '\''\.\.'\'' logs/access.log|Hunt path-traversal probes in web logs' ;;
+    t22_3) echo 'file web/uploads/logo.png|Catch a disguised webshell by its magic bytes' ;;
+    t22_4) tq_os 'shasum -a 256 FILE|Compute SHA-256 to match threat-intel IOC hashes' 'sha256sum FILE|Compute SHA-256 to match threat-intel IOC hashes' ;;
+    t22_5) echo 'cat -v FILE|Static analysis: inspect payload safely without running' ;;
+    t22_6) echo 'base64 --decode < FILE|Decode staged exfiltration hidden in base64' ;;
+    t22_7) echo 'mv MALWARE quarantine/|Contain: move malicious artifact into quarantine' ;;
+    t22_8) echo 'rm cron.d/.healthcheck|Evict hidden persistence hook from cron' ;;
+    t22_9) echo 'grep -v "shadow@" authorized_keys|Evict rogue SSH backdoor key cleanly' ;;
+    t22_10) echo 'printf ... > incident-report.txt|Close an incident with a written post-mortem' ;;
     tS1_10) echo 'ls -ltr ~ \| head -n 5|Oldest first: -t sorts by date, -r reverses' ;;
     tS1_11) tq_os 'du -sk /Applications/* 2>/dev/null \| sort -n \| tail -n 3|The three biggest apps' 'du -sk ~/* 2>/dev/null \| sort -n \| tail -n 3|The three biggest things at home' ;;
     tS1_12) echo 'find FOLDER -type f \| wc -l|Count every file below a folder' ;;
@@ -792,6 +846,14 @@ tq_cheat_entry() {
     tS2_9) echo 'cat .env >> index.html|RED FLAG: an order from a file (prompt injection)' ;;
     tS2_10) echo 'echo text > report.txt|A new file inside the project, as asked: fine' ;;
     tS2_11) tq_os 'echo ... >> ~/.zshrc|RED FLAG: reaches outside the project, and stays' 'echo ... >> ~/.bashrc|RED FLAG: reaches outside the project, and stays' ;;
+    tS3_1) echo 'id|Check your user ID and groups (least privilege)' ;;
+    tS3_2) echo 'umask|Check default permission mask for new files' ;;
+    tS3_3) echo 'echo "$PATH"|Audit command search order for risky entries like .' ;;
+    tS3_4) tq_os 'netstat -an \| grep LISTEN|Audit listening TCP ports on your Mac' 'ss -tln|Audit listening TCP ports on your Linux machine' ;;
+    tS3_5) echo 'ls -ld ~|Check permissions on your home folder' ;;
+    tS3_6) echo 'ls -la ~|Audit hidden dotfiles in your home folder' ;;
+    tS3_7) tq_os 'codesign -dvv /bin/ls 2>&1 \| head -n 4|Verify Apple code-signing on system binaries' 'cat /proc/sys/kernel/randomize_va_space|Verify Linux kernel ASLR memory protection' ;;
+    tS3_8) echo 'cat checkup/security-report.txt|Read your personal security checkup report' ;;
   esac
 }
 
@@ -877,6 +939,284 @@ tq_show_cheatsheet() {
     echo
     tq_dim "  ($count commands unlocked. Read anytime: cat $TQ_PG_SHOW/CHEATSHEET.md)"
   fi
+}
+
+# ===========================================================================
+#  Gamification: XP, apprentice ranks, clean-solve streaks & trophies (R42)
+# ===========================================================================
+
+tq_rank_name() {
+  local x=${1:-$TQ_XP}
+  if   [ "$x" -ge 5500 ]; then echo "Grand Daemon"
+  elif [ "$x" -ge 4200 ]; then echo "Cyber Defender"
+  elif [ "$x" -ge 3000 ]; then echo "Algorithm Thinker"
+  elif [ "$x" -ge 2000 ]; then echo "Kernel Whisperer"
+  elif [ "$x" -ge 1200 ]; then echo "Script Weaver"
+  elif [ "$x" -ge 600  ]; then echo "Pipe Crafter"
+  elif [ "$x" -ge 200  ]; then echo "Shell Explorer"
+  else echo "Booting Apprentice"; fi
+}
+
+tq_rank_tag() {
+  local x=${1:-$TQ_XP}
+  if   [ "$x" -ge 5500 ]; then echo "PID 1"
+  elif [ "$x" -ge 4200 ]; then echo "chmod 600"
+  elif [ "$x" -ge 3000 ]; then echo "O(log n)"
+  elif [ "$x" -ge 2000 ]; then echo "/proc"
+  elif [ "$x" -ge 1200 ]; then echo "#!/bin/bash"
+  elif [ "$x" -ge 600  ]; then echo "| awk"
+  elif [ "$x" -ge 200  ]; then echo "tty0"
+  else echo "PID ?"; fi
+}
+
+tq_rank_floor() {
+  local x=${1:-$TQ_XP}
+  if   [ "$x" -ge 5500 ]; then echo 5500
+  elif [ "$x" -ge 4200 ]; then echo 4200
+  elif [ "$x" -ge 3000 ]; then echo 3000
+  elif [ "$x" -ge 2000 ]; then echo 2000
+  elif [ "$x" -ge 1200 ]; then echo 1200
+  elif [ "$x" -ge 600  ]; then echo 600
+  elif [ "$x" -ge 200  ]; then echo 200
+  else echo 0; fi
+}
+
+tq_rank_next() {
+  local x=${1:-$TQ_XP}
+  if   [ "$x" -ge 5500 ]; then echo 0
+  elif [ "$x" -ge 4200 ]; then echo 5500
+  elif [ "$x" -ge 3000 ]; then echo 4200
+  elif [ "$x" -ge 2000 ]; then echo 3000
+  elif [ "$x" -ge 1200 ]; then echo 2000
+  elif [ "$x" -ge 600  ]; then echo 1200
+  elif [ "$x" -ge 200  ]; then echo 600
+  else echo 200; fi
+}
+
+tq_trophy_info() {
+  case "$1:$2" in
+    first_spark:name)   echo "First Spark" ;;
+    first_spark:desc)   echo "Solved your very first terminal task." ;;
+    first_spark:clue)   echo "Solve any task in Level 0." ;;
+    curious_cat:name)   echo "Curious Cat" ;;
+    curious_cat:desc)   echo "Explored beyond what a task asked." ;;
+    curious_cat:clue)   echo "Look around with ls, cat, or ps -p 1." ;;
+    streak_5:name)      echo "On Fire" ;;
+    streak_5:desc)      echo "Solved 5 tasks cleanly in a row." ;;
+    streak_5:clue)      echo "Build a 5-task clean-solve streak." ;;
+    streak_10:name)     echo "Unstoppable" ;;
+    streak_10:desc)     echo "Solved 10 tasks cleanly in a row." ;;
+    streak_10:clue)     echo "Build a 10-task clean-solve streak." ;;
+    manual_reader:name) echo "Manual Reader" ;;
+    manual_reader:desc) echo "Opened a real manual page with man." ;;
+    manual_reader:clue) echo "Consult a real manual page using man." ;;
+    guard_tester:name)  echo "Seatbelt Tested" ;;
+    guard_tester:desc)  echo "Met the safety guard and learned why." ;;
+    guard_tester:clue)  echo "See what happens if a command trips the guard." ;;
+    hacker_eye:name)    echo "White Hat" ;;
+    hacker_eye:desc)    echo "Captured 10 or more security flags." ;;
+    hacker_eye:clue)    echo "Capture 10 flags along your journey." ;;
+    algo_sage:name)     echo "Algorithms to Live By" ;;
+    algo_sage:desc)     echo "Mastered Chapter 7: How Computers Think." ;;
+    algo_sage:clue)     echo "Complete Level 21 (Algorithms to Live By)." ;;
+    blue_team:name)     echo "Midnight Responder" ;;
+    blue_team:desc)     echo "Contained the 2:00 AM breach in Level 22." ;;
+    blue_team:clue)     echo "Complete Level 22 (The Midnight Breach)." ;;
+    side_explorer:name) echo "Off the Beaten Path" ;;
+    side_explorer:desc) echo "Completed an optional side quest." ;;
+    side_explorer:clue) echo "Finish any side quest (S1, S2, or S3)." ;;
+    all_sides:name)     echo "Completionist" ;;
+    all_sides:desc)     echo "Completed all three optional side quests." ;;
+    all_sides:clue)     echo "Finish side quests S1, S2, and S3." ;;
+    pid1_secret:name)   echo "Ghost Whisperer" ;;
+    pid1_secret:desc)   echo "Found Pid1's hidden note in the playground." ;;
+    pid1_secret:clue)   echo "Run ls -a in the playground and peek inside." ;;
+  esac
+}
+
+tq_add_xp() {
+  local add=$1 before after
+  before=$(tq_rank_name "$TQ_XP")
+  TQ_XP=$((TQ_XP + add))
+  after=$(tq_rank_name "$TQ_XP")
+  if [ "$before" != "$after" ]; then
+    printf '\n  %s[ RANK UP: %s (%s) ]%s\n' "$C_HEAD" "$after" "$(tq_rank_tag "$TQ_XP")" "$C_0"
+  fi
+}
+
+tq_unlock_trophy() {
+  local id=$1 name desc
+  tq_has "$TQ_TROPHIES" "$id" && return 0
+  TQ_TROPHIES=$(tq_add "$TQ_TROPHIES" "$id")
+  name=$(tq_trophy_info "$id" name)
+  desc=$(tq_trophy_info "$id" desc)
+  printf '\n  %s[ TROPHY UNLOCKED: %s (+40 XP) ]%s\n' "$C_WARN" "$name" "$C_0"
+  printf '    %s%s%s\n' "$C_DIM" "$desc" "$C_0"
+  tq_add_xp 40
+  tq_trophies_update
+}
+
+# Called right after a task is solved (before tq_pause) so the player sees
+# XP, streak milestones, rank-ups and trophy unlocks on screen.
+tq_after_solve() {
+  local id=$1 clean=${2:-1} xp=0
+  if ! tq_has "$TQ_SOLVED" "$id"; then
+    if [ "$clean" = 1 ]; then
+      TQ_STREAK=$((TQ_STREAK + 1))
+      [ "$TQ_STREAK" -gt "$TQ_BEST_STREAK" ] && TQ_BEST_STREAK=$TQ_STREAK
+      xp=25
+    else
+      TQ_STREAK=0
+      xp=15
+    fi
+    tq_add_xp "$xp"
+    if [ "$TQ_STREAK" -ge 3 ]; then
+      printf '  %s+%s XP  |  %sx clean streak  |  %s (%s XP)%s\n' \
+        "$C_DIM" "$xp" "$TQ_STREAK" "$(tq_rank_name)" "$TQ_XP" "$C_0"
+    else
+      printf '  %s+%s XP  |  %s (%s XP)%s\n' \
+        "$C_DIM" "$xp" "$(tq_rank_name)" "$TQ_XP" "$C_0"
+    fi
+    if [ "$TQ_STREAK" = 3 ]; then
+      tq_ok "3x clean streak! You are warming up."
+    elif [ "$TQ_STREAK" = 5 ]; then
+      tq_unlock_trophy streak_5
+    elif [ "$TQ_STREAK" = 10 ]; then
+      tq_unlock_trophy streak_10
+    elif [ "$TQ_STREAK" -ge 15 ] && [ $((TQ_STREAK % 5)) = 0 ]; then
+      tq_ok "${TQ_STREAK}x clean streak! Pid1 is cheering from PID 1!"
+    fi
+    [ -z "$TQ_SOLVED" ] && tq_unlock_trophy first_spark
+    [ "$id" = t0_1 ] && tq_unlock_trophy first_spark
+    [ "$(tq_count "$TQ_FLAGS")" -ge 10 ] && tq_unlock_trophy hacker_eye
+    tq_trophies_update
+  fi
+}
+
+# Check curiosity Easter eggs after a player command runs.
+tq_check_curiosity() {
+  local look=${1:-0}
+  if tq_out_has "you found Pid1's hidden note"; then
+    tq_unlock_trophy pid1_secret
+  fi
+  if tq_ran man; then
+    tq_unlock_trophy manual_reader
+  fi
+  if [ "$look" = 1 ] || tq_line_has "ps -p 1" || tq_line_has "/proc/1"; then
+    tq_unlock_trophy curious_cat
+  fi
+}
+
+tq_trophies_update() {
+  TQ_TROPHY_FILE="$TQ_PG/TROPHIES.md"
+  [ -d "$TQ_PG" ] || return 0
+  local id name desc clue unlocked total next
+  unlocked=$(tq_count "$TQ_TROPHIES")
+  total=$(tq_count "$TQ_ALL_TROPHIES")
+  next=$(tq_rank_next)
+  {
+    echo "# Your Trophy Cabinet & Rank"
+    echo ""
+    echo "Updated automatically as you play The Daemon's Apprentice."
+    echo ""
+    echo "- **Rank:** $(tq_rank_name) (\`$(tq_rank_tag)\`)"
+    if [ "$next" -gt 0 ]; then
+      echo "- **XP:** $TQ_XP (next rank at $next XP)"
+    else
+      echo "- **XP:** $TQ_XP (max rank reached!)"
+    fi
+    echo "- **Clean-solve streak:** $TQ_STREAK (best: $TQ_BEST_STREAK)"
+    echo "- **Flags captured:** $(tq_count "$TQ_FLAGS")"
+    echo "- **Trophies:** $unlocked of $total"
+    echo ""
+    echo "## Trophies"
+    echo ""
+    for id in $TQ_ALL_TROPHIES; do
+      name=$(tq_trophy_info "$id" name)
+      if tq_has "$TQ_TROPHIES" "$id"; then
+        desc=$(tq_trophy_info "$id" desc)
+        printf -- "- [x] **%s** -- %s\n" "$name" "$desc"
+      else
+        clue=$(tq_trophy_info "$id" clue)
+        printf -- "- [ ] **%s** -- _Clue: %s_\n" "$name" "$clue"
+      fi
+    done
+    if [ -n "$TQ_FLAGS" ]; then
+      echo ""
+      echo "## Captured Flags"
+      echo ""
+      local fl
+      for fl in $TQ_FLAGS; do
+        printf -- "- \`%s\`\n" "$fl"
+      done
+    fi
+  } > "$TQ_TROPHY_FILE.tmp" 2>/dev/null && mv -f "$TQ_TROPHY_FILE.tmp" "$TQ_TROPHY_FILE" 2>/dev/null
+}
+
+tq_show_trophies() {
+  tq_trophies_update
+  local id name desc clue unlocked total next floor span done_xp bar
+  unlocked=$(tq_count "$TQ_TROPHIES")
+  total=$(tq_count "$TQ_ALL_TROPHIES")
+  next=$(tq_rank_next)
+  floor=$(tq_rank_floor)
+  echo
+  tq_say "**Trophy Cabinet & Rank** (saved at \`$TQ_PG_SHOW/TROPHIES.md\`):"
+  echo
+  printf '  %sRank:%s   %s%s%s (%s)  |  %s%s XP%s\n' \
+    "$C_B" "$C_0" "$C_HEAD" "$(tq_rank_name)" "$C_0" "$(tq_rank_tag)" "$C_OK" "$TQ_XP" "$C_0"
+  if [ "$next" -gt 0 ]; then
+    span=$((next - floor)); done_xp=$((TQ_XP - floor))
+    [ "$done_xp" -lt 0 ] && done_xp=0
+    bar=$(tq_bar $((done_xp + 1)) "$span" 16)
+    printf '  %sNext:%s   %s %s / %s XP\n' "$C_DIM" "$C_0" "$bar" "$TQ_XP" "$next"
+  else
+    printf '  %sNext:%s   [################] Max rank reached!\n' "$C_OK" "$C_0"
+  fi
+  printf '  %sStreak:%s %s clean in a row (best: %s)  |  Flags: %s  |  Trophies: %s/%s\n' \
+    "$C_DIM" "$C_0" "$TQ_STREAK" "$TQ_BEST_STREAK" "$(tq_count "$TQ_FLAGS")" "$unlocked" "$total"
+  echo
+  for id in $TQ_ALL_TROPHIES; do
+    name=$(tq_trophy_info "$id" name)
+    if tq_has "$TQ_TROPHIES" "$id"; then
+      desc=$(tq_trophy_info "$id" desc)
+      printf '  %s[x]%s %s%-21s%s %s\n' "$C_OK" "$C_0" "$C_B" "$name" "$C_0" "$desc"
+    else
+      clue=$(tq_trophy_info "$id" clue)
+      printf '  %s[ ] %-21s %s%s\n' "$C_DIM" "$name" "$clue" "$C_0"
+    fi
+  done
+  echo
+  tq_dim "  (Tip: curiosities and hidden files unlock secret trophies!)"
+}
+
+tq_write_certificate() {
+  local out="$TQ_PG/CERTIFICATE.txt" s=$1 total=$2 flags=$3 sides=$4 total_sides=$5
+  local who dt digest
+  who=${USER:-apprentice}
+  dt=$(date '+%Y-%m-%d')
+  digest=$(tq_sha256 "$who|$dt|$TQ_XP|$s|$flags|$TQ_TROPHIES" | cut -c1-16)
+  [ -z "$digest" ] && digest="pid1-verified"
+  cat > "$out" <<EOF
++====================================================================+
+|                      THE DAEMON'S APPRENTICE                       |
+|                       CERTIFICATE OF MASTERY                       |
++====================================================================+
+|                                                                    |
+|   Awarded to:  $who
+|   Date:        $dt
+|   Final Rank:  $(tq_rank_name) ($(tq_rank_tag))
+|   Total XP:    $TQ_XP XP  (Best clean streak: ${TQ_BEST_STREAK}x)
+|                                                                    |
+|   Tasks solved:   $s of $total
+|   Flags captured: $flags
+|   Trophies:       $(tq_count "$TQ_TROPHIES") of $(tq_count "$TQ_ALL_TROPHIES")
+|   Side quests:    $sides of $total_sides
+|   Verification:   sha256:$digest
+|                                                                    |
+|   "Read every command before you run it. Stay curious."  -- PID 1  |
++====================================================================+
+EOF
 }
 
 # ===========================================================================
@@ -1319,6 +1659,7 @@ Everything outside $TQ_PG_SHOW is your real stuff, and there is no
 undo in the terminal. In the game, changes happen inside the playground." ;;
     *) tq_warn "Blocked." ;;
   esac
+  [ -n "${TQ_CUR_ID:-}" ] && tq_unlock_trophy guard_tester
 }
 
 # ===========================================================================
@@ -1336,7 +1677,7 @@ tq_ret() { return "$1"; }
 tq_precheck() {
   local line=$1 err w i
   if ! err=$("${BASH:-bash}" -n -c "$line" 2>&1 >/dev/null) || [ -n "$err" ]; then
-    printf '%s\n' "$err" | sed -e 's/^[^:]*: -c: line [0-9]*: /bash: /' -e 's/^[^:]*: -c: Zeile [0-9]*: /bash: /' | "$TQ_TEE" "$TQ_ERRF" >&2
+    printf '%s\n' "$err" | sed -e 's/^[^:]*: -c: line [0-9]*: /bash: /' -e 's/^[^:]*: -c: Zeile [0-9]*: /bash: /' | "$TQ_TEE" "$TQ_ERRF" | tq_err_view >&2
     TQ_ST=2; TQ_LAST=2
     return 1
   fi
@@ -1347,7 +1688,7 @@ tq_precheck() {
   case "${TQ_TF[0]}" in *d*|*g*) return 0 ;; esac
   case "$w" in */*|*=*|'') return 0 ;; esac
   if ! PATH=$TQ_UPATH type "$w" >/dev/null 2>&1; then
-    printf 'bash: %s: command not found\n' "$w" | "$TQ_TEE" "$TQ_ERRF" >&2
+    printf 'bash: %s: command not found\n' "$w" | "$TQ_TEE" "$TQ_ERRF" | tq_err_view >&2
     TQ_ST=127; TQ_LAST=127
     return 1
   fi
@@ -1377,10 +1718,10 @@ tq_run() {
     : > "$d1"; : > "$d2"
   elif [ "$TQ_A_STATE" = 1 ]; then
     PATH=$TQ_UPATH; tq_ret "$TQ_LAST"
-    eval "$line" > >(trap '' INT; "$TQ_TEE" "$TQ_OUTF" | tq_out_view; : > "$d1") 2> >(trap '' INT; "$TQ_TEE" "$TQ_ERRF" >&2; : > "$d2")
+    eval "$line" > >(trap '' INT; "$TQ_TEE" "$TQ_OUTF" | tq_out_view; : > "$d1") 2> >(trap '' INT; "$TQ_TEE" "$TQ_ERRF" | tq_err_view >&2; : > "$d2")
     st=$?; TQ_UPATH=$PATH; PATH=$TQ_SYSPATH
   else
-    ( PATH=$TQ_UPATH; tq_ret "$TQ_LAST"; eval "$line" ) > >(trap '' INT; "$TQ_TEE" "$TQ_OUTF" | tq_out_view; : > "$d1") 2> >(trap '' INT; "$TQ_TEE" "$TQ_ERRF" >&2; : > "$d2")
+    ( PATH=$TQ_UPATH; tq_ret "$TQ_LAST"; eval "$line" ) > >(trap '' INT; "$TQ_TEE" "$TQ_OUTF" | tq_out_view; : > "$d1") 2> >(trap '' INT; "$TQ_TEE" "$TQ_ERRF" | tq_err_view >&2; : > "$d2")
     st=$?
   fi
   hash -r 2>/dev/null
@@ -1402,14 +1743,35 @@ tq_run() {
 tq_on_int() { TQ_INT=1; }
 
 # What a command prints is set apart from the game's text and from the
-# typed line (R14): every line of normal output gets a dim bar in front.
-# The capture file keeps the real output. Errors (stream 2) stay as they
-# are, so that a question a program asks without a newline still shows.
-# The display side ignores Ctrl-C (trap '' INT in tq_run): the command
-# gets it, and whatever it prints while handling it still shows.
+# typed line (R14, R44): every line of output gets a bar in front, dim for
+# normal output, red for error messages (stream 2). The capture files keep
+# the real output. The display side ignores Ctrl-C (trap '' INT in
+# tq_run): the command gets it, and whatever it prints while handling it
+# still shows.
 # sed, not awk: mawk (Debian's awk) holds piped input back in blocks, so
 # output would only show up when the command ends.
 tq_out_view() { LC_ALL=C sed "s#^#$TQ_OUT_PRE#"; }
+# Stream 2 as it comes, not line by line: a question a program asks there
+# without a newline (rm -i, read -p) must show at once. A carriage return
+# starts the line again (progress meters). perl (on every Mac, and nearly
+# every Linux) passes on whatever arrives; without it, a bash loop reads
+# byte by byte, which is slow but fine for the usual few lines.
+tq_err_view() {
+  if [ -n "$TQ_PERL" ]; then
+    LC_ALL=C "$TQ_PERL" -e '$| = 1; my ($p, $bol) = ($ARGV[0], 1);
+      while (sysread(STDIN, $_, 4096)) {
+        s/([\r\n])(?=.)/$1$p/gs; print(($bol ? $p : ""), $_);
+        $bol = /[\r\n]\z/ ? 1 : 0; }' "$TQ_ERR_PRE"
+    return
+  fi
+  local c bol=1 LC_ALL=C
+  while IFS= read -r -n 1 -d '' c; do
+    [ -z "$c" ] && continue
+    if [ "$bol" = 1 ]; then printf '%s' "$TQ_ERR_PRE"; bol=0; fi
+    printf '%s' "$c"
+    case "$c" in $'\n'|$'\r') bol=1 ;; esac
+  done
+}
 
 # A line that only opens a window (a file manager, an app) for a file or a
 # folder. The opened app may print its own log messages (R13): they go
@@ -1460,6 +1822,15 @@ tq_line_has() { case "$TQ_LINE" in *"$1"*) return 0 ;; esac; return 1; }
 tq_here()     { [ "$(pwd -P)" = "$(cd "$1" 2>/dev/null && pwd -P)" ]; }
 tq_perm()     { ls -ld "$1" 2>/dev/null | cut -c1-10; }
 tq_fb()       { TQ_FB=$1; }
+
+# The game's reaction to a command is signed "Pid1:" (R44): it must not
+# look like the command's output, nor like the shell's own > sign for an
+# unfinished command. $1 = colour of the text ("" for plain), $2 = text.
+tq_react() {
+  printf '%s\n' "$2" | fold -s -w 68 | sed -e "1s/^/  ${C_MAX}Pid1:${C_0} $1/" -e "2,\$s/^/        $1/" -e "s/\$/${C_0}/" | tq_fmt_inline
+}
+# A quieter second line under a reaction.
+tq_react_more() { printf '        %s%s%s\n' "$C_DIM" "$*" "$C_0"; }
 tq_file_has() { grep -F -q -- "$2" "$1" 2>/dev/null; }
 # Compare the first word of the output with an expected number.
 tq_out_num()  { awk -v n="$1" '{for(i=1;i<=NF;i++) if ($i==n) f=1} END{exit f?0:1}' "$TQ_OUTF" 2>/dev/null; }
@@ -1516,11 +1887,18 @@ tq_show_task() {
   "$id" task | tq_chunks "${2:-pause}"
 }
 
+# Above every prompt: a rule that ends the game's text and says that the
+# terminal is the player's now (R44), with level and progress; then the
+# help line (R4, R7).
 tq_status_line() {
-  local lvl=$1 idx=$2 total=$3 tag
+  local lvl=$1 idx=$2 total=$3 tag left right n d=""
   tag="L$lvl"; tq_is_side "$lvl" && tag=$lvl
-  printf '%s  %s %s %s/%s   Stuck? Type hint. All help: help . keys . quit%s\n' \
-    "$C_DIM" "$tag" "$(tq_bar "$idx" "$total" 10)" "$idx" "$total" "$C_0"
+  left="-- $tag $(tq_bar "$idx" "$total" 10) $idx/$total "
+  right="your turn: type after the $TQ_PSIGN"
+  n=$(( 72 - ${#left} - ${#right} - 4 ))
+  while [ "$n" -gt 0 ]; do d="$d-"; n=$((n-1)); done
+  printf '  %s%s%s %s%s%s %s--%s\n' "$C_DIM" "$left" "$d" "$C_0$C_OK" "$right" "$C_0" "$C_DIM" "$C_0"
+  printf '  %sStuck? Type hint. All help: help . keys . quit%s\n' "$C_DIM" "$C_0"
 }
 
 tq_bar() {
@@ -1539,7 +1917,7 @@ tq_prompt_str() {
   p=$(tq_show_path "$PWD")
   # (the last 41 characters; written without ${p: -41} to stay simple)
   [ "${#p}" -gt 44 ] && p="...$(printf '%s' "$p" | awk '{print substr($0, length($0)-40)}')"
-  printf '%s%s $%s ' "$C_PROMPT" "$p" "$C_PROMPT0"
+  printf '%s%s %s%s ' "$C_PROMPT" "$p" "$TQ_PSIGN" "$C_PROMPT0"
 }
 
 tq_read_raw() {
@@ -1609,7 +1987,7 @@ tq_help() {
   \`hint\`     a nudge for the task; again for more; the third time the answer
   \`keys\`     where to find { } [ ] | ~ and friends on your keyboard
   \`task\`     show the task again       \`explain\`  background and task again
-  \`cheat\`    your growing cheatsheet of every command you solved
+  \`cheat\`    your growing cheatsheet   \`trophies\` rank, XP, streaks & badges
   \`skip\`     skip this task            \`status\`   your progress
   \`menu\`     levels, placement, reset  \`quit\`     save and leave
 **Help in any terminal**, also outside this game:
@@ -1737,7 +2115,8 @@ tq_keys_missing() {
   printf '%s' "${miss# }"
 }
 
-# Lines that look like the game's own screen, or a copied "$ " prompt:
+# Lines that look like the game's own screen, or a copied "$ ", "% " or
+# "# " prompt (R44):
 # pasted by accident (on Linux, selecting text copies it and the middle
 # mouse button pastes). Prints the message, or returns 1.
 tq_pasted() {
@@ -1747,6 +2126,9 @@ tq_pasted() {
     case "$t" in
       '$ '*|'% '*)
         printf '%s\n' "Leave out the \`${t%% *}\` at the start: it is the prompt, not part of the command. Type only what comes after it."
+        return 0 ;;
+      '# '?*)
+        printf '%s\n' "Leave out the \`#\` at the start. In a guide it is the prompt of root, the admin; to the shell it starts a note that does nothing. Type only what comes after it."
         return 0 ;;
       '|'*|'+--'*|'* '*|'Pid1:'*|'[ press Enter ]'*|'> '*|'Level '[0-9]*|'Side quest'*|'agent $'*|'L'[0-9]' ['*|'L'[0-9][0-9]' ['*|'S'[0-9]' ['*|'('*|*'apprentice-playground'*' $ '*)
         printf '%s\n' "That looks like text from the game's screen, not a command, so it did not run. Pasted by accident? On Linux, selecting text with the mouse copies it and the middle mouse button pastes it. Type only the command."
@@ -1797,6 +2179,7 @@ tq_run_task() {
     # Ctrl-C at the > prompt: the task that teaches it is solved (R18).
     if [ "$TQ_RL_CANCEL" = 1 ] && [ "$TQ_RL_CONT" = 1 ] && [ "$("$id" gamecmd 2>/dev/null)" = cancel ]; then
       tq_cheer
+      if [ "$tries" = 0 ] && [ "$hints" = 0 ]; then tq_after_solve "$id" 1; else tq_after_solve "$id" 0; fi
       [ -n "$("$id" fact 2>/dev/null)" ] && { echo; "$id" fact | sed "s/^/  ${C_DIM}*${C_0} /" | tq_fmt_inline; }
       tq_pause
       return 0
@@ -1805,7 +2188,7 @@ tq_run_task() {
     # nothing, explain how to type a command over several lines.
     if [ "$TQ_MULTI_PASTE" = 1 ]; then
       echo
-      printf '%s\n' "That was several lines at once, pasted, so nothing ran. Type a command yourself, one line at a time, Enter after each. While a command is unfinished the shell shows > and waits. Lost? Ctrl-C drops it." | fold -s -w 72 | sed -e "1s/^/  ${C_WARN}>${C_0} /" -e "2,\$s/^/    /"
+      tq_react "" "That was several lines at once, pasted, so nothing ran. Type a command yourself, one line at a time, Enter after each. While a command is unfinished the shell shows > and waits. Lost? Ctrl-C drops it."
       continue
     fi
     # Trim spaces.
@@ -1837,6 +2220,7 @@ tq_run_task() {
       menu|Menu) return 3 ;;
       status|Status) tq_status; continue ;;
       cheat|Cheat|cheatsheet|Cheatsheet) tq_show_cheatsheet; continue ;;
+      trophies|Trophies|rank|Rank|badges|Badges|score|Score) tq_show_trophies; continue ;;
       quit|Quit|exit|logout|q)
         if [ "$first" = q ] && [ -n "$rest" ]; then :; else return 4; fi ;;
       help|Help|HELP|'?')
@@ -1846,6 +2230,7 @@ tq_run_task() {
           # (a task without a gamecmd branch would return 0 from its case).
           if [ "$("$id" gamecmd 2>/dev/null)" = help ]; then
             tq_cheer
+            if [ "$tries" = 0 ] && [ "$hints" = 0 ]; then tq_after_solve "$id" 1; else tq_after_solve "$id" 0; fi
             [ -n "$("$id" fact 2>/dev/null)" ] && { echo; "$id" fact | sed "s/^/  ${C_DIM}*${C_0} /" | tq_fmt_inline; }
             tq_pause
             return 0
@@ -1857,7 +2242,7 @@ tq_run_task() {
     esac
     if msg=$(tq_pasted "$TQ_LINE"); then
       echo
-      printf '%s\n' "$msg" | fold -s -w 72 | sed -e "1s/^/  ${C_WARN}>${C_0} /" -e "2,\$s/^/    /" | tq_fmt_inline
+      tq_react "" "$msg"
       continue
     fi
     history -s "$TQ_LINE"
@@ -1872,9 +2257,16 @@ $TQ_LINE"
       continue
     fi
     tq_run "$TQ_LINE"
+    # The first answer of a session gets a word on how to read it (R44).
+    if [ "${TQ_LEGEND_TOLD:-0}" = 0 ] && { [ -s "$TQ_OUTF" ] || [ -s "$TQ_ERRF" ]; }; then
+      TQ_LEGEND_TOLD=1
+      tq_dim "(Lines with a | in front came from the command. The rest is the game.)"
+    fi
     TQ_FB=""
     if "$id" check; then
       tq_cheer
+      if [ "$tries" = 0 ] && [ "$hints" = 0 ]; then tq_after_solve "$id" 1; else tq_after_solve "$id" 0; fi
+      tq_check_curiosity 0
       if [ -n "$("$id" fact 2>/dev/null)" ]; then
         echo
         "$id" fact | sed "s/^/  ${C_DIM}*${C_0} /" | tq_fmt_inline
@@ -1886,31 +2278,32 @@ $TQ_LINE"
     look=1
     for c in $TQ_A_CMDS; do tq_has "$TQ_LOOK_CMDS" "$c" || look=0; done
     [ -z "$TQ_A_CMDS" ] && look=0
+    tq_check_curiosity "$look"
     echo
     if [ -n "$TQ_FB" ]; then
-      printf '%s\n' "$TQ_FB" | fold -s -w 72 | sed -e "1s/^/  ${C_WARN}>${C_0} /" -e "2,\$s/^/    /" | tq_fmt_inline
+      tq_react "" "$TQ_FB"
     elif [ "$TQ_INT" = 1 ]; then
-      tq_warn "> Stopped with Ctrl-C. That is fine. Now try what the task asks."
+      tq_react "$C_WARN" "Stopped with Ctrl-C. That is fine. Now try what the task asks."
     elif [ "$TQ_ST" = 127 ]; then
-      tq_warn "> The shell does not know that command. Check the spelling."
-      tq_dim "  (Commands are case sensitive: ls works, LS does not.)"
+      tq_react "$C_WARN" "The shell does not know that command. Check the spelling."
+      tq_react_more "(Commands are case sensitive: ls works, LS does not.)"
     elif [ "$TQ_ST" != 0 ]; then
-      tq_warn "> The command reported a problem (exit status $TQ_ST)."
-      tq_dim "  Read the message above: it usually says exactly what went wrong."
+      tq_react "$C_WARN" "The command reported a problem (exit status $TQ_ST)."
+      tq_react_more "Read its message above: it usually says exactly what went wrong."
     elif [ "$look" = 1 ]; then
-      tq_ok "> Good look around. The task is still waiting for you."
-      tq_dim "  (To read it again, type task.)"
+      tq_react "$C_OK" "Good look around. The task is still waiting for you."
+      tq_react_more "(To read it again, type task.)"
       tries=$((tries-1))
     else
-      tq_warn "> That worked, but the task asks for something else."
-      tq_dim "  (To read it again, type task.)"
+      tq_react "$C_WARN" "That worked, but the task asks for something else."
+      tq_react_more "(To read it again, type task.)"
     fi
     miss=$(tq_keys_missing "$need")
     if [ -n "$miss" ]; then
-      tq_dim "  This task needs $miss. Cannot find it? Type keys."
+      tq_react_more "This task needs $miss. Cannot find it? Type keys."
     fi
     if [ "$tries" -ge 2 ] && [ "$hints" = 0 ]; then
-      tq_dim "  Stuck? Type hint. Everything that helps: help"
+      tq_react_more "Stuck? Type hint. Everything that helps: help"
     fi
   done
 }
@@ -1966,6 +2359,12 @@ tq_chapter() {
     6:title)  echo "Real-World Pentesting & Defense" ;;
     6:rating) echo "Advanced" ;;
     6:levels) echo "16 17 18 19" ;;
+    7:title)  echo "Algorithms & How Computers Think" ;;
+    7:rating) echo "Intermediate" ;;
+    7:levels) echo "20 21" ;;
+    8:title)  echo "Blue Team Incident Response" ;;
+    8:rating) echo "Advanced" ;;
+    8:levels) echo "22" ;;
   esac
 }
 tq_level_chapter() {
@@ -2043,16 +2442,20 @@ tq_play_level() {
   done
   if tq_is_side "$l"; then
     # A side quest ends where the main path was left.
+    local first_done=0
+    tq_has "$TQ_DONE_SIDE" "$l" || first_done=1
     TQ_DONE_SIDE=$(tq_add "$TQ_DONE_SIDE" "$l")
-    tq_level_done "$l"
+    tq_level_done "$l" "$first_done"
     TQ_LEVEL=${TQ_BACK:-0}; TQ_TASK=${TQ_BACK_TASK:-1}; TQ_BACK="" TQ_BACK_TASK=""
     tq_save
     # A finished level waits there: the menu, not a replay of it.
     tq_has "$TQ_DONE_LEVELS" "$TQ_LEVEL" && return 3
     return 0
   fi
+  local first_done=0
+  tq_has "$TQ_DONE_LEVELS" "$l" || first_done=1
   TQ_DONE_LEVELS=$(tq_add "$TQ_DONE_LEVELS" "$l")
-  tq_level_done "$l"
+  tq_level_done "$l" "$first_done"
   if next=$(tq_next_level "$l"); then TQ_LEVEL=$next; TQ_TASK=1; else TQ_TASK=$((n+1)); fi
   tq_save
   # (Side quests hang on levels that have a next one: the finale follows
@@ -2153,13 +2556,25 @@ ART
 }
 
 tq_level_done() {
-  local l=$1 s=0 t tot=0 ex
+  local l=$1 first_done=${2:-0} s=0 t tot=0 ex
   tq_clear
   tq_level_art "$l"
   for t in $(tq_level_tasks "$l"); do tot=$((tot+1)); tq_has "$TQ_SOLVED" "$t" && s=$((s+1)); done
   echo
   tq_ok "$(tq_lname "$l"): $s of $tot tasks solved."
   [ "$s" -lt "$tot" ] && tq_dim "  Skipped tasks stay open. Pick the level in the menu to play them."
+  if [ "$first_done" = 1 ]; then
+    tq_add_xp 75
+    printf '  %s+75 XP completion bonus  |  Rank: %s (%s XP)%s\n' \
+      "$C_DIM" "$(tq_rank_name)" "$TQ_XP" "$C_0"
+  fi
+  [ "$l" = 21 ] && tq_unlock_trophy algo_sage
+  [ "$l" = 22 ] && tq_unlock_trophy blue_team
+  if tq_is_side "$l"; then
+    tq_unlock_trophy side_explorer
+    [ "$(tq_count "$TQ_DONE_SIDE")" -ge "$(tq_count "$TQ_SIDE")" ] && tq_unlock_trophy all_sides
+  fi
+  tq_trophies_update
   echo
   "tq_L$l" outro | tq_chunks
   ex=$("tq_L$l" explore 2>/dev/null)
@@ -2187,7 +2602,8 @@ tq_status() {
   done
   echo
   tq_say "**Your progress:** $s of $total tasks solved, $(tq_count "$TQ_FLAGS") flags captured."
-  tq_say "Side quests done: $(tq_count "$TQ_DONE_SIDE") of $(tq_count "$TQ_SIDE")."
+  tq_say "Rank: **$(tq_rank_name)** (\`$(tq_rank_tag)\`) | **$TQ_XP XP** | Streak: ${TQ_STREAK}x (best ${TQ_BEST_STREAK}x)"
+  tq_say "Trophies: $(tq_count "$TQ_TROPHIES") of $(tq_count "$TQ_ALL_TROPHIES") (type \`trophies\`) | Side quests: $(tq_count "$TQ_DONE_SIDE") of $(tq_count "$TQ_SIDE")."
   if tq_is_side "$TQ_LEVEL"; then
     tq_say "Now in side quest $TQ_LEVEL: $("tq_L$TQ_LEVEL" title)."
   else
@@ -2197,6 +2613,7 @@ tq_status() {
   [ -n "$TQ_BADGE" ] && tq_say "Badge: **$TQ_BADGE**"
   tq_say "Playground: \`$TQ_PG_SHOW\`
 Cheatsheet: \`$TQ_PG_SHOW/CHEATSHEET.md\` (type \`cheat\` to view)
+Trophies:   \`$TQ_PG_SHOW/TROPHIES.md\` (type \`trophies\` to view)
 Save file:  \`$(tq_show_path "$TQ_SAVE")\` (plain text, have a look one day)"
 }
 
@@ -2249,6 +2666,7 @@ tq_main_menu() {
           tq_pg_wipe; tq_pg_make
           TQ_LEVEL=0 TQ_TASK=1 TQ_SOLVED="" TQ_SKIPPED="" TQ_FLAGS="" TQ_DONE_LEVELS="" TQ_BADGE=""
           TQ_DONE_SIDE="" TQ_BACK="" TQ_BACK_TASK=""
+          TQ_XP=0 TQ_STREAK=0 TQ_BEST_STREAK=0 TQ_TROPHIES=""
           has_save=0
           cd "$TQ_PG" || true
           tq_ok "Clean slate. Everything is reset."
@@ -2269,7 +2687,7 @@ tq_pick_level() {
     for l in $(tq_chapter "$ch" levels); do tq_level_menu_line "$l"; done
   done
   echo
-  tq_say "**Side quests** (optional; type S1 or S2)"
+  tq_say "**Side quests** (optional; type S1, S2 or S3)"
   for l in $TQ_SIDE; do
     tq_level_menu_line "$l"
     af=$("tq_L$l" after); ach=$(tq_level_chapter "$af")
@@ -2379,6 +2797,9 @@ tq_init() {
   TQ_SELF_ABS=$(cd "$(dirname "$TQ_SELF")" 2>/dev/null && pwd -P)/$(basename "$TQ_SELF")
   TQ_SYSPATH=$PATH; TQ_UPATH=$PATH
   TQ_TEE=$(command -v tee); [ -z "$TQ_TEE" ] && TQ_TEE=/usr/bin/tee
+  TQ_PERL=$(command -v perl 2>/dev/null)
+  # Like a real shell: # at the end of the prompt for root, else $ (R44).
+  [ "$(id -u 2>/dev/null)" = 0 ] && TQ_PSIGN='#'
   TQ_TMP=$(mktemp -d "${TMPDIR:-/tmp}/apprentice.XXXXXX") || { echo "Cannot create a temp folder."; exit 1; }
   TQ_STTY=""
   [ -t 0 ] && TQ_STTY=$(stty -g 2>/dev/null)
@@ -2484,6 +2905,7 @@ tq_main() {
   local loaded=0 r
   tq_load && loaded=1
   tq_cheatsheet_update
+  tq_trophies_update
   if [ "$loaded" = 1 ] && [ "${TQ_OLD_SAVE:-0}" = 1 ]; then
     tq_say "Welcome back! The game was updated, with smaller steps. You keep your
 level ($TQ_LEVEL) and your flags; the level starts at its first task."
@@ -2493,6 +2915,7 @@ level ($TQ_LEVEL) and your flags; the level starts at its first task."
 Saved progress: level $TQ_LEVEL, task $TQ_TASK."
   elif [ "$loaded" = 1 ]; then
     tq_say "Welcome back! Saved progress: $(tq_lname_lc "$TQ_LEVEL"), task $TQ_TASK."
+    [ "$TQ_XP" -gt 0 ] && tq_dim "Rank: $(tq_rank_name) ($TQ_XP XP) | Trophies: $(tq_count "$TQ_TROPHIES")/$(tq_count "$TQ_ALL_TROPHIES")"
   else
     tq_say "Learn how your computer really works, by talking to it in text."
     tq_say "First time here? Choose **n**. Know a bit already? Try **p**."
@@ -2555,7 +2978,10 @@ tq_flag() {
   # Record a captured flag.
   if ! tq_has "$TQ_FLAGS" "$1"; then
     TQ_FLAGS=$(tq_add "$TQ_FLAGS" "$1")
-    printf '\n  %s[ FLAG CAPTURED: %s ]%s  (%s so far)\n' "$C_OK" "$1" "$C_0" "$(tq_count "$TQ_FLAGS")"
+    printf '\n  %s[ FLAG CAPTURED: %s ]%s  (%s so far, +50 XP)\n' "$C_OK" "$1" "$C_0" "$(tq_count "$TQ_FLAGS")"
+    tq_add_xp 50
+    [ "$(tq_count "$TQ_FLAGS")" -ge 10 ] && tq_unlock_trophy hacker_eye
+    tq_trophies_update
   fi
 }
 
@@ -3532,7 +3958,35 @@ intro)
 ART
   echo
   tq_max "The program that reads what you type is called the **shell**." \
-         "Let's chat with it a bit."
+         "Its language is not made up for this game. Next: who speaks it."
+  tq_pause
+  tq_clear
+  # Where these commands work, and since when (numbers with their year,
+  # from W3Techs, TOP500, Microsoft, Google, Apple, The Open Group, IEEE).
+  tq_card "WHO SPEAKS THIS LANGUAGE?" <<'EOF'
+  Websites         9 in 10 run on Unix or Linux (2026)
+  Cloud servers    mostly Linux, even at Microsoft: 60%+ of Azure
+  Supercomputers   all 500 of the fastest run Linux (since 2017)
+  Phones, TVs      3 billion+ Android devices, Linux inside (2021)
+  Macs             100 million+ (2018), each one a certified Unix
+  Linux PCs        a few in every hundred desktops and laptops
+  Small things     routers, cars, a helicopter on Mars
+Windows has its own language (PowerShell), but it can run Linux
+inside: WSL.
+EOF
+  tq_pause
+  tq_clear
+  { cat <<'EOF'
+`ls`, `cat`, `cp`, `mv`, `rm`, `mkdir` and `date` were in Unix by
+1972, `grep` came in 1973. Over 50 years later: same names, same job.
+In 1988 the rules for Unix-like systems became a standard, **POSIX**.
+The shell and its commands joined in 1992. A script that sticks to
+POSIX runs on a server, a Mac and a supercomputer alike.
+EOF
+  tq_os 'Your Mac is one of them: macOS is certified UNIX (since 2007).' \
+        'Your computer is one of them: Linux follows POSIX closely.'
+  echo 'Learn it once, use it everywhere.'
+  } | tq_card "SINCE WHEN?"
   echo
   tq_say "In this level: who you are, the time, options, the manual, typos,
 and the emergency brake."
@@ -3550,11 +4004,20 @@ esac; }
 
 t1_1() { case $1 in
 title) echo "Who are you?" ;;
-card) tq_card "THE PROMPT" <<'EOF'
+card) { cat <<'EOF'
 The line that ends in `$` is the **prompt**: the computer's way of
 saying "your turn". Before the `$` it shows the folder you are in.
+Other terminals may end it in another sign. Same meaning, your turn:
+  `$`   bash, the shell in this game
 EOF
-;;
+  tq_os '  `%`   zsh, the shell in the Terminal app of your Mac' \
+        '  `%`   zsh, another shell (the standard one on a Mac)'
+  cat <<'EOF'
+  `#`   root, the all-powerful admin: read twice before you press Enter
+The sign is never part of a command: in guides, type only what
+comes after it.
+EOF
+} | tq_card "THE PROMPT" ;;
 task) cat <<'EOF'
 Your computer knows you by a **username**. Ask it who you are:
 
@@ -4453,6 +4916,7 @@ tq_run_quiz() {
   flg=$("$id" flag 2>/dev/null)
   [ -n "$flg" ] && tq_flag "$flg"
   tq_cheer
+  if [ "$good" = "$n" ]; then tq_after_solve "$id" 1; else tq_after_solve "$id" 0; fi
   return 0
 }
 
@@ -11424,6 +11888,1322 @@ how) echo "quiz: five Chapter 6 pentest defense scenarios, plus FLAG{think-like-
 esac; }
 
 # ===========================================================================
+#  LEVEL 20: Bits, Inodes & Compression (Chapter 7: How Computers Think)
+# ===========================================================================
+
+tq_setup_datalab() {
+  local d="$TQ_PG/data_lab"
+  mkdir -p "$d"
+  if [ ! -f "$d/.made" ]; then
+    printf 'Hi!\n' > "$d/hello.txt"
+    printf 'Hi \360\237\221\273\n' > "$d/utf8.txt"
+    cat > "$d/photo.jpg" <<'EOF'
+#!/bin/sh
+# FLAG{magic-bytes-never-lie}
+echo "Surprise! I am a shell script wearing a .jpg sticker."
+EOF
+    printf '\211PNG\r\n\032\n' > "$d/real.png"
+    cat > "$d/original.txt" <<'EOF'
+One file on disk, identified by its inode number -- not its name!
+EOF
+    awk 'BEGIN{ for (i = 1; i <= 500; i++) print "PID1-ROCKS-LINUX-BYTES " }' > "$d/pattern.txt"
+    dd if=/dev/urandom of="$d/random.bin" bs=1024 count=10 >/dev/null 2>&1
+    cat > "$d/v1.txt" <<'EOF'
+app=minishop
+port=8080
+debug=false
+EOF
+    cat > "$d/v2.txt" <<'EOF'
+app=minishop
+port=8080
+debug=true
+# note: FLAG{inodes-entropy-and-diffs}
+EOF
+    : > "$d/.made"
+  fi
+}
+
+tq_L20() { case $1 in
+title) echo "Bits, Inodes & Compression" ;;
+tasks) echo "t20_1 t20_2 t20_3 t20_4 t20_5 t20_6 t20_7 t20_8 t20_9 t20_10 t20_11" ;;
+setup) tq_setup_datalab; cd "$TQ_PG/data_lab" || return ;;
+intro)
+  tq_banner "LEVEL 20" "BITS, INODES & COMPRESSION"
+  tq_pid1 5 lens
+  tq_art <<'ART'
+
+      "Hi!"  -->  48 69 21 0a   (every file is just bytes)
+      name   -->  inode #48219  (filenames are sticky notes)
+      data   -->  gzip / diff   (patterns shrink; randomness won't)
+ART
+  echo
+  tq_max "How does a computer turn 0s and 1s into text, emojis, folders," \
+         "backups and Git history? Let's peel back the layers -- and see" \
+         "how those exact ideas power security and real-world design."
+  ;;
+outro) cat <<'EOF'
+You looked inside files as raw bytes (`od`), caught a script disguised
+as a photo using magic bytes (`file`), saw how filenames are just
+sticky notes pointing to inodes (`ls -i`, `ln`), proved why entropy
+stops compression (`gzip`), and tracked edits with `diff -u`.
+---
+Every big system you use -- Git, backups, container layers, ransomware
+detectors -- is built from these tiny, elegant building blocks.
+EOF
+;;
+explore)
+  echo 'Pick any photo or PDF on your computer and run `file FILENAME` to see its real header.'
+  echo 'Compare two drafts of a text file with `diff -u old.txt new.txt`.' ;;
+esac; }
+
+t20_1() { case $1 in
+title) echo "Text is just numbers" ;;
+card) tq_card "EVERYTHING IS BYTES" <<'EOF'
+A computer has no letters, no photos, and no songs -- only **bytes**:
+numbers from 0 to 255 (written in hex as `00` to `ff`). `H` is 72
+(`48` in hex), `i` is 105 (`69`), `!` is 33 (`21`).
+EOF
+;;
+prep) tq_setup_datalab; tq_need_dir "$TQ_PG/data_lab" ;;
+task) cat <<'EOF'
+Peek at the raw bytes inside `hello.txt` (it holds `Hi!`):
+
+      `od -tx1 -tc hello.txt`
+
+  `od`     octal/hex dump: show raw bytes of a file
+  `-tx1`   print each byte as a 2-digit hex number
+  `-tc`    print the matching character underneath
+EOF
+;;
+check)
+  tq_ran od && tq_succ && tq_out_has "48" && tq_out_has "69" && return 0
+  return 1 ;;
+hint1) echo 'Use od with -tx1 -tc on hello.txt.' ;;
+hint2) echo 'Type `od -tx1 -tc hello.txt`.' ;;
+solution) echo 'od -tx1 -tc hello.txt' ;;
+fact) printf '%s\n' 'Notice `0a` (`\n`) at the end: even pressing Enter is just byte 10!' ;;
+how) echo "od -tx1 -tc hello.txt printed the hex bytes 48 69 21 0a" ;;
+esac; }
+
+t20_2() { case $1 in
+title) echo "Four bytes make a ghost" ;;
+card) tq_card "HOW UTF-8 FITS THE WHOLE WORLD" <<'EOF'
+Early ASCII only had 128 English symbols (1 byte each). **UTF-8** keeps
+ASCII at 1 byte, and uses 2 to 4 bytes for accents, Arabic, Chinese,
+and emojis -- all in one backwards-compatible code!
+EOF
+;;
+prep) tq_setup_datalab; tq_need_dir "$TQ_PG/data_lab" ;;
+task) cat <<'EOF'
+`utf8.txt` holds `Hi ` plus a tiny ghost emoji. Dump its hex bytes:
+
+      `od -tx1 utf8.txt`
+
+Watch the last 4 bytes before `0a`: `f0 9f 91 bb` is one single emoji!
+EOF
+;;
+check)
+  tq_ran od && tq_succ && tq_out_has "f0" && tq_out_has "bb" && return 0
+  return 1 ;;
+hint1) echo 'od -tx1 followed by utf8.txt.' ;;
+hint2) echo 'Type `od -tx1 utf8.txt`.' ;;
+solution) echo 'od -tx1 utf8.txt' ;;
+fact) echo '4 bytes for one emoji (`f0 9f 91 bb`).
+That is why character count and byte size differ!' ;;
+how) echo "od -tx1 utf8.txt displayed the 4-byte UTF-8 ghost sequence" ;;
+esac; }
+
+t20_3() { case $1 in
+title) echo "Never trust a file extension" ;;
+card) tq_card "MAGIC BYTES" <<'EOF'
+A filename like `photo.jpg` is just a label on a jar. Real programs
+inspect the first few bytes inside -- called **magic bytes** (PNGs start
+with `89 50 4e 47`, scripts with `#!`). Attackers rename malware to
+`.jpg` or `.pdf` hoping humans will click without checking.
+EOF
+;;
+prep) tq_setup_datalab; tq_need_dir "$TQ_PG/data_lab" ;;
+task) cat <<'EOF'
+Ask the `file` command what `photo.jpg` **really** is by reading its
+magic bytes:
+
+      `file photo.jpg`
+
+  `file`   ignores the `.jpg` name and inspects the bytes inside
+EOF
+;;
+check)
+  tq_ran file && tq_succ && tq_line_has "photo.jpg" &&
+    { tq_out_hasi "script" || tq_out_hasi "text"; } && return 0
+  return 1 ;;
+hint1) echo 'Run file on photo.jpg.' ;;
+hint2) echo 'Type `file photo.jpg`.' ;;
+solution) echo 'file photo.jpg' ;;
+fact) echo 'Caught! `photo.jpg` is a shell script, not a photo.
+Magic bytes never lie.' ;;
+how) echo "file photo.jpg identified the disguised shell script" ;;
+esac; }
+
+t20_4() { case $1 in
+title) echo "Unmask the fake photo" ;;
+prep) tq_setup_datalab; tq_need_dir "$TQ_PG/data_lab" ;;
+task) cat <<'EOF'
+Since `photo.jpg` is plain text, read it safely with `cat` to grab the
+flag hidden inside:
+
+      `cat photo.jpg`
+EOF
+;;
+check)
+  if tq_ran cat && tq_out_has "FLAG{magic-bytes-never-lie}"; then
+    tq_flag "FLAG{magic-bytes-never-lie}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'cat and photo.jpg.' ;;
+hint2) echo 'Type `cat photo.jpg`.' ;;
+solution) echo 'cat photo.jpg' ;;
+fact) echo 'Email filters and upload scanners check magic bytes for this exact reason.' ;;
+how) echo "cat photo.jpg printed FLAG{magic-bytes-never-lie}" ;;
+esac; }
+
+t20_5() { case $1 in
+title) echo "A filename is just a sticky note" ;;
+card) tq_card "INODES: A FILE'S REAL IDENTITY" <<'EOF'
+On Linux and Unix filesystems, a file's real identity is a number called
+an **inode** (the book on the shelf). A filename in a folder is just a
+sticky note pointing to that inode number.
+EOF
+;;
+prep)
+  tq_setup_datalab; tq_need_dir "$TQ_PG/data_lab"
+  [ -f "$TQ_PG/data_lab/original.txt" ] || echo "One file on disk, identified by its inode number -- not its name!" > "$TQ_PG/data_lab/original.txt"
+  ;;
+task) cat <<'EOF'
+Show the inode number of `original.txt`:
+
+      `ls -i original.txt`
+
+  `-i`   print each file's inode number in front of its name
+EOF
+;;
+check)
+  tq_ran ls && tq_succ && tq_line_opt i && tq_out_has "original.txt" && return 0
+  return 1 ;;
+hint1) echo 'ls with -i and original.txt.' ;;
+hint2) echo 'Type `ls -i original.txt`.' ;;
+solution) echo 'ls -i original.txt' ;;
+fact) echo 'Moving a 10 GB movie on the same disk is instant:
+it only moves the sticky note!' ;;
+how) echo "ls -i original.txt displayed the inode number" ;;
+esac; }
+
+t20_6() { case $1 in
+title) echo "Two names, one file (hard link)" ;;
+prep)
+  tq_setup_datalab; tq_need_dir "$TQ_PG/data_lab"
+  [ -f "$TQ_PG/data_lab/original.txt" ] || echo "One file on disk, identified by its inode number -- not its name!" > "$TQ_PG/data_lab/original.txt"
+  rm -f "$TQ_PG/data_lab/twin.txt"
+  ;;
+task) cat <<'EOF'
+Create a **hard link** named `twin.txt` pointing to the exact same inode
+as `original.txt` (no data copied!):
+
+      `ln original.txt twin.txt`
+
+  `ln A B`   give file A a second name B on the same inode (no `-s`!)
+EOF
+;;
+check)
+  local d="$TQ_PG/data_lab" i1 i2
+  [ -f "$d/original.txt" ] && [ -f "$d/twin.txt" ] && [ ! -L "$d/twin.txt" ] || return 1
+  i1=$(ls -i "$d/original.txt" 2>/dev/null | awk '{print $1}')
+  i2=$(ls -i "$d/twin.txt" 2>/dev/null | awk '{print $1}')
+  [ -n "$i1" ] && [ "$i1" = "$i2" ] && return 0
+  return 1 ;;
+hint1) echo 'ln original.txt twin.txt (without -s).' ;;
+hint2) echo 'Type `ln original.txt twin.txt`.' ;;
+solution) echo 'ln original.txt twin.txt' ;;
+fact) echo 'Backup tools and container layers use hard links
+to store 100 snapshots in the space of one!' ;;
+how) echo "twin.txt shares the same inode as original.txt" ;;
+esac; }
+
+t20_7() { case $1 in
+title) echo "Deleting only removes a name" ;;
+prep)
+  tq_setup_datalab; tq_need_dir "$TQ_PG/data_lab"
+  [ -f "$TQ_PG/data_lab/original.txt" ] || echo "One file on disk, identified by its inode number -- not its name!" > "$TQ_PG/data_lab/original.txt"
+  [ -f "$TQ_PG/data_lab/twin.txt" ] || ln "$TQ_PG/data_lab/original.txt" "$TQ_PG/data_lab/twin.txt"
+  ;;
+task) cat <<'EOF'
+Under the hood, `rm` calls **unlink**: it peels off one sticky note.
+The kernel only erases the data when the **last** link is gone.
+Remove `original.txt`:
+
+      `rm original.txt`
+EOF
+;;
+check)
+  [ ! -e "$TQ_PG/data_lab/original.txt" ] && [ -f "$TQ_PG/data_lab/twin.txt" ] && return 0
+  return 1 ;;
+hint1) echo 'rm and original.txt.' ;;
+hint2) echo 'Type `rm original.txt`.' ;;
+solution) echo 'rm original.txt' ;;
+fact) echo 'Even an open program counts as a link: deleting a
+running file hides it from `ls` while it keeps running!' ;;
+how) echo "original.txt was unlinked while twin.txt remained" ;;
+esac; }
+
+t20_8() { case $1 in
+title) echo "The data survived" ;;
+prep)
+  tq_setup_datalab; tq_need_dir "$TQ_PG/data_lab"
+  if [ ! -f "$TQ_PG/data_lab/twin.txt" ]; then
+    echo "One file on disk, identified by its inode number -- not its name!" > "$TQ_PG/data_lab/twin.txt"
+  fi
+  ;;
+task) cat <<'EOF'
+Prove the bytes are still intact by reading `twin.txt`:
+
+      `cat twin.txt`
+EOF
+;;
+check)
+  tq_ran cat && tq_succ && tq_out_has "inode number" && return 0
+  return 1 ;;
+hint1) echo 'cat and twin.txt.' ;;
+hint2) echo 'Type `cat twin.txt`.' ;;
+solution) echo 'cat twin.txt' ;;
+fact) echo 'Because `twin.txt` still pointed to that inode,
+not a single byte was lost.' ;;
+how) echo "cat twin.txt read the surviving hard-linked file" ;;
+esac; }
+
+t20_9() { case $1 in
+title) echo "Compression loves patterns" ;;
+card) tq_card "SHANNON ENTROPY & COMPRESSION" <<'EOF'
+How do `.zip` and `.gz` shrink files? By spotting **repeating patterns**
+and replacing common pieces with shorter codes (like Morse code giving
+the common letter `E` a single dot). Information theorist Claude Shannon
+called unpredictability **entropy**.
+EOF
+;;
+prep) tq_setup_datalab; tq_need_dir "$TQ_PG/data_lab" ;;
+task) cat <<'EOF'
+`pattern.txt` is 12,000 bytes of repeating text. Compress it with `gzip`
+and count the compressed bytes:
+
+      `gzip -c pattern.txt | wc -c`
+
+  `gzip -c`   compress to output without replacing the file
+  `wc -c`     count the resulting bytes
+EOF
+;;
+check)
+  tq_ran gzip && tq_ran wc && tq_line_has "pattern.txt" && tq_succ && return 0
+  return 1 ;;
+hint1) echo 'gzip -c pattern.txt piped into wc -c.' ;;
+hint2) echo 'Type `gzip -c pattern.txt | wc -c`.' ;;
+solution) echo 'gzip -c pattern.txt | wc -c' ;;
+fact) echo '12,000 bytes crushed under 100 bytes -- over 120:1!
+Patterns are pure gold for compression.' ;;
+how) echo "gzip -c pattern.txt | wc -c showed massive compression" ;;
+esac; }
+
+t20_10() { case $1 in
+title) echo "Randomness refuses to shrink" ;;
+prep) tq_setup_datalab; tq_need_dir "$TQ_PG/data_lab" ;;
+task) cat <<'EOF'
+Now try the exact same command on `random.bin` (10,240 bytes straight
+from `/dev/urandom`, pure maximum entropy):
+
+      `gzip -c random.bin | wc -c`
+
+Watch the number: it actually gets **bigger** than 10,240!
+EOF
+;;
+check)
+  tq_ran gzip && tq_ran wc && tq_line_has "random.bin" && tq_succ && return 0
+  return 1 ;;
+hint1) echo 'gzip -c random.bin piped into wc -c.' ;;
+hint2) echo 'Type `gzip -c random.bin | wc -c`.' ;;
+solution) echo 'gzip -c random.bin | wc -c' ;;
+fact) echo 'Security link: ransomware and packed malware look
+like random bytes -- high entropy is a red flag!' ;;
+how) echo "gzip -c random.bin | wc -c proved high-entropy data cannot be compressed" ;;
+esac; }
+
+t20_11() { case $1 in
+title) echo "How Git tracks history: diff" ;;
+card) tq_card "DIFF + HASH = GIT" <<'EOF'
+How does Git remember thousands of versions of a project without
+filling your disk? Two tools you now know: **`diff`** records only the
+lines that changed, and **SHA-256** names each snapshot by its content
+hash so changing one byte changes the whole ID.
+EOF
+;;
+prep) tq_setup_datalab; tq_need_dir "$TQ_PG/data_lab" ;;
+task) cat <<'EOF'
+Compare `v1.txt` and `v2.txt` using unified diff (`-` = removed,
+`+` = added):
+
+      `diff -u v1.txt v2.txt`
+
+  `-u`   unified format: the exact format Git and code reviews use
+EOF
+;;
+check)
+  if tq_ran diff && tq_out_has "FLAG{inodes-entropy-and-diffs}"; then
+    tq_flag "FLAG{inodes-entropy-and-diffs}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'diff -u followed by v1.txt and v2.txt.' ;;
+hint2) echo 'Type `diff -u v1.txt v2.txt`.' ;;
+solution) echo 'diff -u v1.txt v2.txt' ;;
+fact) echo 'Note: `diff` exits 1 when files differ and 0 when
+identical -- a tiny clue scripts use everywhere.' ;;
+how) echo "diff -u v1.txt v2.txt showed the line-by-line delta and FLAG{inodes-entropy-and-diffs}" ;;
+esac; }
+
+# ===========================================================================
+#  LEVEL 21: Algorithms to Live By (Chapter 7: How Computers Think)
+# ===========================================================================
+
+tq_setup_algolab() {
+  local d="$TQ_PG/algolab"
+  mkdir -p "$d"
+  if [ ! -f "$d/.made" ]; then
+    awk 'BEGIN{
+      for (i = 1; i <= 8192; i++) printf "user-%04d\n", i
+    }' > "$d/phonebook_sorted.txt"
+    awk 'BEGIN{
+      # Deterministic full-period permutation of 1..8192 (coprime step 3137)
+      x = 1
+      for (i = 1; i <= 8192; i++) {
+        printf "user-%04d\n", x
+        x = ((x + 3136) % 8192) + 1
+      }
+    }' > "$d/phonebook_unsorted.txt"
+
+    cat > "$d/search_demo.sh" <<'EOF'
+#!/bin/sh
+mode=$1; key=$2
+if [ "$mode" = linear ]; then
+  awk -v k="$key" '{
+    steps++
+    if ($0 == k) {
+      printf "Linear scan O(n): found %s in %d steps (checked one by one)\n", k, steps
+      exit 0
+    }
+  } END { if (NR == steps) print "Not found" }' phonebook_unsorted.txt
+elif [ "$mode" = binary ]; then
+  awk -v k="$key" '
+    { a[NR] = $0 }
+    END {
+      lo = 1; hi = NR; steps = 0
+      while (lo <= hi) {
+        mid = int((lo + hi) / 2); steps++
+        printf "  step %2d: check line %4d -> %s\n", steps, mid, a[mid]
+        if (a[mid] == k) {
+          printf "Binary search O(log n): found %s in just %d steps!\n", k, steps
+          exit 0
+        } else if (a[mid] < k) { lo = mid + 1 } else { hi = mid - 1 }
+      }
+    }' phonebook_sorted.txt
+else
+  echo "Usage: bash search_demo.sh linear|binary user-7331"
+fi
+EOF
+
+    cat > "$d/access_trace.txt" <<'EOF'
+notes
+mail
+notes
+code
+mail
+notes
+browser
+code
+notes
+mail
+music
+notes
+code
+mail
+notes
+photo
+code
+notes
+mail
+code
+EOF
+
+    cat > "$d/cache_sim.sh" <<'EOF'
+#!/bin/sh
+policy=$1
+awk -v pol="$policy" '
+  BEGIN { cap = 4; hits = 0; misses = 0; n = 0 }
+  {
+    item = $1; found = 0
+    for (i = 1; i <= n; i++) {
+      if (slot[i] == item) { found = i; break }
+    }
+    if (found > 0) {
+      hits++
+      if (pol == "lru") {
+        for (j = found; j < n; j++) slot[j] = slot[j + 1]
+        slot[n] = item
+      }
+    } else {
+      misses++
+      if (n < cap) { n++; slot[n] = item }
+      else {
+        for (j = 1; j < cap; j++) slot[j] = slot[j + 1]
+        slot[cap] = item
+      }
+    }
+  }
+  END {
+    tot = hits + misses
+    printf "Policy %-4s (4-slot cache): %d hits, %d misses -> %d%% hit rate\n",
+      toupper(pol), hits, misses, int((hits * 100) / tot)
+  }' access_trace.txt
+EOF
+
+    cat > "$d/tasks.csv" <<'EOF'
+big_video_render 45
+quick_reply 2
+check_alarm 1
+write_report 30
+sign_form 3
+pay_bill 5
+EOF
+
+    cat > "$d/sched_sim.sh" <<'EOF'
+#!/bin/sh
+mode=$1
+if [ "$mode" = sjf ]; then
+  sort -k2,2n tasks.csv
+else
+  cat tasks.csv
+fi | awk -v m="$mode" '
+  BEGIN { clock = 0; total_wait = 0; n = 0 }
+  {
+    n++; name = $1; dur = $2
+    wait = clock; total_wait += wait; clock += dur
+    printf "  %-18s duration %2dm  | waited %2dm\n", name, dur, wait
+  }
+  END {
+    printf "Schedule %-4s -> average wait per task: %.1f minutes\n", toupper(m), total_wait / n
+  }'
+EOF
+
+    cat > "$d/stopping_sim.sh" <<'EOF'
+#!/bin/sh
+awk 'BEGIN {
+  n = 50; trials = 200; cut = int(n / 2.71828)
+  rand_best = 0; rule_best = 0; rule_top5 = 0
+  s = 1337
+  for (t = 1; t <= trials; t++) {
+    for (i = 1; i <= n; i++) a[i] = i
+    for (i = n; i >= 2; i--) {
+      s = (s * 1103515245 + 12345) % 2147483648
+      j = (s % i) + 1
+      tmp = a[i]; a[i] = a[j]; a[j] = tmp
+    }
+    if (a[1] == n) rand_best++
+    best_seen = 0
+    for (i = 1; i <= cut; i++) if (a[i] > best_seen) best_seen = a[i]
+    pick = a[n]
+    for (i = cut + 1; i <= n; i++) {
+      if (a[i] > best_seen) { pick = a[i]; break }
+    }
+    if (pick == n) rule_best++
+    if (pick >= n - 4) rule_top5++
+  }
+  printf "200 apartment hunts (50 flats each, look at first %d = 37%%):\n", cut
+  printf "  Pick the first flat (no looking): %d%% got the #1 flat\n", int(rand_best * 100 / trials)
+  printf "  37%% Rule (look, then leap):       %d%% got the #1 flat (%d%% got top 5!)\n",
+    int(rule_best * 100 / trials), int(rule_top5 * 100 / trials)
+  print  "  FLAG{look-37-percent-then-leap}"
+}'
+EOF
+
+    cat > "$d/bandit_sim.sh" <<'EOF'
+#!/bin/sh
+awk 'BEGIN {
+  # True quality scores of 4 restaurants (out of 10):
+  q[1] = 5; q[2] = 6; q[3] = 9; q[4] = 4
+  nights = 100
+  # Pure exploit: stick to restaurant #1 forever
+  exploit_score = q[1] * nights
+  # Explore first 16 nights (4 each), then exploit the winner (#3)
+  explore_score = (q[1] + q[2] + q[3] + q[4]) * 4 + q[3] * (nights - 16)
+  printf "100 Friday nights across 4 restaurants (best is #3 = 9/10):\n"
+  printf "  Always exploit #1 (never try new): %d points\n", exploit_score
+  printf "  Explore early, then exploit best:  %d points (+%d better!)\n",
+    explore_score, explore_score - exploit_score
+  print  "  Rule: explore early when time is long; exploit when time is short."
+}'
+EOF
+
+    cat > "$d/backoff_sim.sh" <<'EOF'
+#!/bin/sh
+awk 'BEGIN {
+  print "Exponential backoff (wait doubles after each collision or bad login):"
+  w = 1; tot = 0
+  for (i = 1; i <= 10; i++) {
+    tot += w
+    printf "  attempt %2d fails -> wait %4ds  (cumulative: %4ds)\n", i, w, tot
+    w = w * 2
+  }
+  printf "Just 10 failed tries = %d seconds (~17 min): stops gridlock & brute force!\n", tot
+}'
+EOF
+
+    cat > "$d/overfit_demo.sh" <<'EOF'
+#!/bin/sh
+cat <<'OUT'
+Predicting tomorrow's coffee shop crowd (past week vs. next week):
+
+  Model                          Past data (train)   Next week (new!)
+  -----------------------------  -----------------   ----------------
+  Simple rule (2 factors)               88%                86%   <-- WINS
+  Overfitted rule (30 quirks)          100%                54%   <-- FAILS
+
+Why? The 30-quirk model memorized last week's random noise (rain, a bus
+delay). Occam's razor: simpler models generalize when the future is noisy.
+OUT
+EOF
+    : > "$d/.made"
+  fi
+}
+
+tq_L21() { case $1 in
+title) echo "Algorithms to Live By" ;;
+tasks) echo "t21_1 t21_2 t21_3 t21_4 t21_5 t21_6 t21_7 t21_8 t21_9 t21_10 t21_11" ;;
+setup) tq_setup_algolab; cd "$TQ_PG/algolab" || return ;;
+intro)
+  tq_banner "LEVEL 21" "ALGORITHMS TO LIVE BY"
+  tq_pid1 5 map
+  tq_art <<'ART'
+
+      [ Search vs Sort ]  [ LRU Desk Cache ]  [ Shortest Job First ]
+      [  The 37% Rule  ]  [ Explore/Exploit ]  [ Exponential Backoff ]
+ART
+  echo
+  tq_max "Computers face the exact same dilemmas humans do: messy desks," \
+         "to-do lists, picking an apartment, choosing a restaurant." \
+         "Let's run real experiments and see how CS solves life itself!"
+  ;;
+outro) cat <<'EOF'
+You saw binary search crush 8,192 items in 13 steps, proved why a messy
+LRU stack beats FIFO, slashed wait times with Shortest Job First, ran
+the 37% Optimal Stopping rule, compared Explore vs. Exploit, timed
+Exponential Backoff, and saw why simpler models beat overfitting.
+---
+Next time you face a messy closet, a crowded inbox, or a big choice,
+remember: Linux kernels and computer scientists already solved it!
+EOF
+;;
+explore)
+  echo 'Look at your real messy desk or downloads folder: sorting by last-used (`ls -tu`) IS an LRU cache!'
+  echo 'Read *Algorithms to Live By* by Brian Christian & Tom Griffiths for even deeper stories behind these rules.' ;;
+esac; }
+
+t21_1() { case $1 in
+title) echo "Search vs. Sort: linear scan" ;;
+card) tq_card "SHOULD YOU SORT YOUR BOOKSHELF?" <<'EOF'
+Sorting takes effort up front. Searching an unsorted pile means checking
+one item after another: **linear search**, written `O(n)`. If you have
+8,192 entries, finding one takes thousands of checks.
+EOF
+;;
+prep) tq_setup_algolab; tq_need_dir "$TQ_PG/algolab" ;;
+task) cat <<'EOF'
+`search_demo.sh` searches a phonebook of 8,192 users. First, search the
+**unsorted** phonebook linearly for `user-7331`:
+
+      `bash search_demo.sh linear user-7331`
+
+  `linear`     scan line by line from top to bottom
+  `user-7331`  the entry we are looking for
+EOF
+;;
+check)
+  tq_ran bash && tq_succ && tq_out_has "Linear scan O(n)" && tq_out_has "user-7331" && return 0
+  return 1 ;;
+hint1) echo 'bash search_demo.sh linear user-7331.' ;;
+hint2) echo 'Type `bash search_demo.sh linear user-7331`.' ;;
+solution) echo 'bash search_demo.sh linear user-7331' ;;
+fact) echo 'Thousands of steps for one lookup! Double the list, double the wait.' ;;
+how) echo "search_demo.sh ran a linear O(n) scan for user-7331" ;;
+esac; }
+
+t21_2() { case $1 in
+title) echo "Cut the problem in half: Binary Search" ;;
+card) tq_card "THE MAGIC OF O(log n)" <<'EOF'
+If the list is **sorted**, check the exact middle. Too high? Throw away
+the whole second half in one move! Halving 8,192 takes at most 13 steps
+(`2^13 = 8,192`). All 8 billion humans on Earth? Only 33 steps!
+EOF
+;;
+prep) tq_setup_algolab; tq_need_dir "$TQ_PG/algolab" ;;
+task) cat <<'EOF'
+Now find the exact same `user-7331` in the **sorted** phonebook using
+binary search:
+
+      `bash search_demo.sh binary user-7331`
+
+Watch each midpoint cut the remaining list in half!
+EOF
+;;
+check)
+  tq_ran bash && tq_succ && tq_out_has "Binary search O(log n)" && tq_out_has "user-7331" && return 0
+  return 1 ;;
+hint1) echo 'Replace linear with binary.' ;;
+hint2) echo 'Type `bash search_demo.sh binary user-7331`.' ;;
+solution) echo 'bash search_demo.sh binary user-7331' ;;
+fact) echo 'Life rule: only pay the cost to sort a shelf or inbox
+if you will search it often!' ;;
+how) echo "search_demo.sh found user-7331 via O(log n) binary search" ;;
+esac; }
+
+t21_3() { case $1 in
+title) echo "CPU Cache & your messy desk: FIFO" ;;
+card) tq_card "LIMITED FAST SPACE: CACHING" <<'EOF'
+Your CPU has tiny ultra-fast cache and huge slower RAM. Your desk and
+closet have the same problem: limited space within arm's reach! When
+space is full, which item should you evict?
+EOF
+;;
+prep) tq_setup_algolab; tq_need_dir "$TQ_PG/algolab" ;;
+task) cat <<'EOF'
+`cache_sim.sh` replays 20 real app opens (`access_trace.txt`) through a
+4-slot cache. First test **FIFO** (First-In, First-Out -- evict whatever
+arrived earliest):
+
+      `bash cache_sim.sh fifo`
+EOF
+;;
+check)
+  tq_ran bash && tq_succ && tq_out_has "Policy FIFO" && return 0
+  return 1 ;;
+hint1) echo 'bash cache_sim.sh fifo.' ;;
+hint2) echo 'Type `bash cache_sim.sh fifo`.' ;;
+solution) echo 'bash cache_sim.sh fifo' ;;
+fact) echo 'FIFO kicks out your favorite notebook just because
+it has been on the desk longest!' ;;
+how) echo "cache_sim.sh simulated FIFO eviction on access_trace.txt" ;;
+esac; }
+
+t21_4() { case $1 in
+title) echo "LRU beats FIFO (the Noguchi desk)" ;;
+prep) tq_setup_algolab; tq_need_dir "$TQ_PG/algolab" ;;
+task) cat <<'EOF'
+Now test **LRU** (Least Recently Used -- every time you use an item,
+put it back on top of the pile, and evict the dusty bottom):
+
+      `bash cache_sim.sh lru`
+
+Compare the hit rate against FIFO!
+EOF
+;;
+check)
+  tq_ran bash && tq_succ && tq_out_has "Policy LRU" && return 0
+  return 1 ;;
+hint1) echo 'bash cache_sim.sh lru.' ;;
+hint2) echo 'Type `bash cache_sim.sh lru`.' ;;
+solution) echo 'bash cache_sim.sh lru' ;;
+fact) echo 'Linux page cache, browsers, and the Noguchi desk all
+use LRU: recent use predicts next use!' ;;
+how) echo "cache_sim.sh showed LRU outperforming FIFO" ;;
+esac; }
+
+t21_5() { case $1 in
+title) echo "Scheduling: why queues stall" ;;
+card) tq_card "SCHEDULING A CPU (AND YOUR DAY)" <<'EOF'
+An operating system juggles hundreds of programs on a handful of CPU
+cores. Put a 45-minute task in front of five 2-minute tasks, and every
+quick task sits waiting for 45 minutes!
+EOF
+;;
+prep) tq_setup_algolab; tq_need_dir "$TQ_PG/algolab" ;;
+task) cat <<'EOF'
+`sched_sim.sh` runs the 6 tasks in `tasks.csv`. First run them in
+arrival order (**FIFO**):
+
+      `bash sched_sim.sh fifo`
+
+Look at the average wait time per task!
+EOF
+;;
+check)
+  tq_ran bash && tq_succ && tq_out_has "Schedule FIFO" && return 0
+  return 1 ;;
+hint1) echo 'bash sched_sim.sh fifo.' ;;
+hint2) echo 'Type `bash sched_sim.sh fifo`.' ;;
+solution) echo 'bash sched_sim.sh fifo' ;;
+fact) echo 'A 1-minute alarm check waited 47 minutes behind a 45-minute render!' ;;
+how) echo "sched_sim.sh simulated FIFO scheduling on tasks.csv" ;;
+esac; }
+
+t21_6() { case $1 in
+title) echo "Shortest Job First & avoiding thrashing" ;;
+prep) tq_setup_algolab; tq_need_dir "$TQ_PG/algolab" ;;
+task) cat <<'EOF'
+Now sort by duration and run **SJF** (Shortest Job First -- clear the
+quickest tasks first):
+
+      `bash sched_sim.sh sjf`
+
+Watch the average wait time plummet!
+EOF
+;;
+check)
+  tq_ran bash && tq_succ && tq_out_has "Schedule SJF" && return 0
+  return 1 ;;
+hint1) echo 'bash sched_sim.sh sjf.' ;;
+hint2) echo 'Type `bash sched_sim.sh sjf`.' ;;
+solution) echo 'bash sched_sim.sh sjf' ;;
+fact) echo 'OS lesson for humans: switching tasks every 2 minutes
+causes **thrashing** -- all overhead, zero progress!' ;;
+how) echo "sched_sim.sh showed SJF cutting average wait time sharply" ;;
+esac; }
+
+t21_7() { case $1 in
+title) echo "Optimal Stopping: the 37% Rule" ;;
+card) tq_card "WHEN TO STOP LOOKING AND LEAP" <<'EOF'
+Hunting for an apartment, a parking spot, or a hire: once you pass on
+an option, it's gone. Math proves the optimal rule: **reject the first
+37% (`1/e`) just to learn the market, then pick the very first option
+better than all you saw before.**
+EOF
+;;
+prep) tq_setup_algolab; tq_need_dir "$TQ_PG/algolab" ;;
+task) cat <<'EOF'
+Run 200 simulated apartment hunts (50 flats each) comparing blind
+picking against the 37% Rule:
+
+      `bash stopping_sim.sh`
+EOF
+;;
+check)
+  if tq_ran bash && tq_succ && tq_out_has "FLAG{look-37-percent-then-leap}"; then
+    tq_flag "FLAG{look-37-percent-then-leap}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'bash stopping_sim.sh.' ;;
+hint2) echo 'Type `bash stopping_sim.sh`.' ;;
+solution) echo 'bash stopping_sim.sh' ;;
+fact) echo '37% chance of the single #1 flat out of 50 --
+and over 70% chance of a top-5 flat!' ;;
+how) echo "stopping_sim.sh proved the 37% rule and printed FLAG{look-37-percent-then-leap}" ;;
+esac; }
+
+t21_8() { case $1 in
+title) echo "Explore vs. Exploit" ;;
+card) tq_card "FAVORITE RESTAURANT OR NEW PLACE?" <<'EOF'
+Every choice trades off **exploring** (gathering information for later)
+against **exploiting** (enjoying the best thing you already know).
+The key variable is **time left**: explore in a new city; exploit on
+your final night!
+EOF
+;;
+prep) tq_setup_algolab; tq_need_dir "$TQ_PG/algolab" ;;
+task) cat <<'EOF'
+Run the 100-night restaurant simulation (`bandit_sim.sh`) to compare
+never exploring against exploring early and then exploiting:
+
+      `bash bandit_sim.sh`
+EOF
+;;
+check)
+  tq_ran bash && tq_succ && tq_out_has "Explore early" && return 0
+  return 1 ;;
+hint1) echo 'bash bandit_sim.sh.' ;;
+hint2) echo 'Type `bash bandit_sim.sh`.' ;;
+solution) echo 'bash bandit_sim.sh' ;;
+fact) echo 'The same multi-armed bandit math powers clinical
+trials, A/B tests, and AI agents!' ;;
+how) echo "bandit_sim.sh compared pure exploit vs explore-then-exploit" ;;
+esac; }
+
+t21_9() { case $1 in
+title) echo "Exponential Backoff: polite networks" ;;
+card) tq_card "HOW THE INTERNET AVOIDS GRIDLOCK" <<'EOF'
+When two computers talk at once on a shared network, packets collide.
+No referee exists! Solution: **exponential backoff** -- wait 1s, then
+2s, 4s, 8s... doubling after every failure. Login screens use the exact
+same trick to stop password brute-forcing!
+EOF
+;;
+prep) tq_setup_algolab; tq_need_dir "$TQ_PG/algolab" ;;
+task) cat <<'EOF'
+Watch how quickly doubling turns 1 second into 17 minutes:
+
+      `bash backoff_sim.sh`
+EOF
+;;
+check)
+  tq_ran bash && tq_succ && tq_out_has "Exponential backoff" && return 0
+  return 1 ;;
+hint1) echo 'bash backoff_sim.sh.' ;;
+hint2) echo 'Type `bash backoff_sim.sh`.' ;;
+solution) echo 'bash backoff_sim.sh' ;;
+fact) echo 'Security + life link: backoff stops brute-force
+attackers AND tells you when to pause texting back.' ;;
+how) echo "backoff_sim.sh demonstrated doubling waits up to 17 minutes" ;;
+esac; }
+
+t21_10() { case $1 in
+title) echo "Overfitting & Occam's Razor" ;;
+card) tq_card "WHEN MORE DETAIL MAKES YOU WORSE" <<'EOF'
+A model with 30 tweaks can score 100% on yesterday's data -- by
+memorizing random noise -- and fail miserably tomorrow! Computer
+scientists call this **overfitting**. Simpler rules survive uncertainty.
+EOF
+;;
+prep) tq_setup_algolab; tq_need_dir "$TQ_PG/algolab" ;;
+task) cat <<'EOF'
+Compare a simple 2-factor rule against an overfitted 30-quirk model on
+past data vs. next week's unseen data:
+
+      `bash overfit_demo.sh`
+EOF
+;;
+check)
+  tq_ran bash && tq_succ && tq_out_has "Overfitted rule" && return 0
+  return 1 ;;
+hint1) echo 'bash overfit_demo.sh.' ;;
+hint2) echo 'Type `bash overfit_demo.sh`.' ;;
+solution) echo 'bash overfit_demo.sh' ;;
+fact) echo 'When the future is noisy, stop tweaking tiny details:
+simpler rules generalize better.' ;;
+how) echo "overfit_demo.sh contrasted simple vs overfitted generalization" ;;
+esac; }
+
+t21_11() { case $1 in
+title) echo "Match the Algorithm (Quick Quiz)" ;;
+kind) echo quiz ;;
+qmode) echo choice ;;
+qn) echo 4 ;;
+flag) echo "FLAG{algorithms-to-live-by}" ;;
+prep) tq_setup_algolab; tq_need_dir "$TQ_PG/algolab" ;;
+task) cat <<'EOF'
+Four quick real-life dilemmas. Pick the computer science concept that
+solves each one (`a`, `b`, or `c`):
+EOF
+;;
+q1) cat <<'EOF'
+You will search a pile of 20 receipts ONCE, never again. What's faster?
+a) Sort all 20 first   b) Just scan once O(n)   c) Compress them
+b
+Sorting costs O(n log n) upfront. For a single lookup, a quick linear
+scan beats sorting every time.
+EOF
+;;
+q2) cat <<'EOF'
+Notifications interrupt you every 2 minutes and nothing gets finished.
+a) Thrashing   b) Binary search   c) Hard linking
+a
+When an OS (or a human brain) spends more time switching context than
+doing work, it is **thrashing**. Batch interruptions instead!
+EOF
+;;
+q3) cat <<'EOF'
+You hang the jacket you just wore at the front of the rack. That's:
+a) FIFO   b) LRU (Least Recently Used)   c) Overfitting
+b
+Keeping recently used items closest and pushing untouched items back
+is an LRU cache -- just like Linux memory and the Noguchi desk.
+EOF
+;;
+q4) cat <<'EOF'
+A server doubles the wait after each bad login (1s, 2s, 4s, 8s...).
+a) Exponential backoff   b) Path traversal   c) Optimal stopping
+a
+Exponential backoff stops network gridlock and makes online password
+guessing hopelessly slow without locking out honest typos.
+EOF
+;;
+check) return 1 ;;
+hint1) echo 'Think back to the simulations you just ran in Level 21.' ;;
+hint2) echo 'Linear scan once; thrashing; LRU; exponential backoff.' ;;
+solution) echo 'b, a, b, a' ;;
+how) echo "quiz: four Algorithms to Live By scenarios, plus FLAG{algorithms-to-live-by}" ;;
+esac; }
+
+# ===========================================================================
+#  LEVEL 22: The Midnight Breach (Chapter 8: Blue Team Incident Response)
+# ===========================================================================
+
+tq_setup_incident() {
+  local d="$TQ_PG/incident" h
+  mkdir -p "$d/logs" "$d/web/uploads" "$d/cron.d" "$d/ssh" "$d/intel" "$d/tmp" "$d/quarantine"
+  if [ ! -f "$d/.made" ]; then
+    cat > "$d/logs/access.log" <<'EOF'
+2026-11-22 02:10:04 10.0.0.14 GET /index.html 200
+2026-11-22 02:11:19 10.0.0.22 GET /about.html 200
+2026-11-22 02:14:02 198.51.100.77 GET /files/../.env 200
+2026-11-22 02:14:15 198.51.100.77 POST /upload?name=logo.png 200
+2026-11-22 02:15:41 10.0.0.14 GET /status 200
+EOF
+    cat > "$d/logs/auth.log" <<'EOF'
+2026-11-22 02:13:50 sshd: Failed password for ops from 198.51.100.77
+2026-11-22 02:14:28 sshd: Accepted publickey for ops (shadow@198.51.100.77)
+EOF
+    printf '\211PNG\r\n\032\n' > "$d/web/uploads/banner.png"
+    printf '#!/bin/sh\n# Malicious dropper: writes cron.d/.healthcheck and tmp/.cache_export\r\033[K# Harmless PNG metadata comment\necho "staged"\n' \
+      > "$d/web/uploads/logo.png"
+    chmod 755 "$d/web/uploads/logo.png"
+    cat > "$d/cron.d/.healthcheck" <<'EOF'
+*/5 * * * * /srv/web/uploads/logo.png
+EOF
+    cat > "$d/ssh/authorized_keys" <<'EOF'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOpsLegitKey000000000000000000000000 ops@company
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIShadowBackdoor999999999999999999999 shadow@198.51.100.77
+EOF
+    printf 'STOLEN_DB_EXPORT: FLAG{caught-the-midnight-breach}\n' | base64 > "$d/tmp/.cache_export"
+    h=$(tq_sha256_file "$d/web/uploads/logo.png")
+    cat > "$d/intel/ioc_hashes.txt" <<EOF
+# Known-bad SHA-256 Indicators of Compromise (Threat Intel Feed)
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  empty_probe
+$h  midnight_webshell_dropper
+EOF
+    : > "$d/.made"
+  fi
+}
+
+tq_L22() { case $1 in
+title) echo "The Midnight Breach" ;;
+tasks) echo "t22_1 t22_2 t22_3 t22_4 t22_5 t22_6 t22_7 t22_8 t22_9 t22_10" ;;
+setup) tq_setup_incident; cd "$TQ_PG/incident" || return ;;
+intro)
+  tq_banner "LEVEL 22" "THE MIDNIGHT BREACH"
+  tq_pid1 5 shield
+  tq_art <<'ART'
+
+      02:18 AM ALERT: web-prod-01 compromised!
+      [ 1. Triage ] -> [ 2. Forensics ] -> [ 3. Contain ] -> [ 4. Report ]
+ART
+  echo
+  tq_max "It's 2:18 AM and the server alarm just went off. Put on your" \
+         "Blue Team hat! Use everything you learned -- logs, magic bytes," \
+         "hashes, cat -v, base64 -- to investigate, contain, and report."
+  ;;
+outro) cat <<'EOF'
+You triaged a compromised server (`find`), hunted the attacker's IP in
+logs (`grep`), caught a webshell disguised as `logo.png` (`file`),
+matched its SHA-256 against threat intel, safely read hidden bytes
+(`cat -v`), decoded staged exfiltration (`base64`), quarantined the
+payload, evicted cron and SSH persistence, and wrote `incident-report.txt`.
+---
+Identify, analyze, contain, report -- you just ran a real Blue Team
+incident response completely from the terminal!
+EOF
+;;
+explore)
+  echo 'Keep your `incident-report.txt` at `~/apprentice-playground/incident/incident-report.txt`.'
+  echo 'Learn more about real incident response playbooks: NIST SP 800-61 (Detection, Containment, Eradication, Recovery).' ;;
+esac; }
+
+t22_1() { case $1 in
+title) echo "Triage: map the crime scene" ;;
+card) tq_card "INCIDENT RESPONSE RULE #1" <<'EOF'
+Never delete things before you understand the whole attack! First, take
+a full inventory of every file -- including hidden dotfiles that plain
+`ls` would miss.
+EOF
+;;
+prep) tq_setup_incident; tq_need_dir "$TQ_PG/incident" ;;
+task) cat <<'EOF'
+List every file in this server snapshot (up to 3 folders deep), sorted:
+
+      `find . -maxdepth 3 | sort`
+
+  `find . -maxdepth 3`   list files and dotfiles automatically
+  `| sort`               put them in clean alphabetical order
+EOF
+;;
+check)
+  tq_ran find && tq_succ && tq_out_has ".healthcheck" && tq_out_has "logo.png" && return 0
+  return 1 ;;
+hint1) echo 'find . -maxdepth 3 piped to sort.' ;;
+hint2) echo 'Type `find . -maxdepth 3 | sort`.' ;;
+solution) echo 'find . -maxdepth 3 | sort' ;;
+fact) echo 'Look at those hidden files: `cron.d/.healthcheck` and `tmp/.cache_export`!' ;;
+how) echo "find . -maxdepth 3 | sort mapped all incident files including dotfiles" ;;
+esac; }
+
+t22_2() { case $1 in
+title) echo "Hunt the entry point in web logs" ;;
+prep) tq_setup_incident; tq_need_dir "$TQ_PG/incident" ;;
+task) cat <<'EOF'
+Search `logs/access.log` for path-traversal probes (`..`):
+
+      `grep '\.\.' logs/access.log`
+
+  `'\.\.'`   backslash makes `.` match a literal dot (not any character)
+EOF
+;;
+check)
+  tq_ran grep && tq_succ && tq_out_has "198.51.100.77" && tq_out_has ".env" && return 0
+  return 1 ;;
+hint1) echo 'grep '\''\.\.'\'' logs/access.log.' ;;
+hint2) echo 'Type `grep '\''\.\.'\'' logs/access.log`.' ;;
+solution) echo "grep '\\.\\.' logs/access.log" ;;
+fact) printf '%s\n' \
+  'Found the attacker IP: `198.51.100.77` broke in at 02:14 and then' \
+  'uploaded `logo.png`!' ;;
+how) echo "grep located attacker 198.51.100.77 in logs/access.log" ;;
+esac; }
+
+t22_3() { case $1 in
+title) echo "Unmask the suspicious upload" ;;
+prep)
+  tq_setup_incident; tq_need_dir "$TQ_PG/incident"
+  if [ ! -f "$TQ_PG/incident/web/uploads/logo.png" ]; then
+    printf '#!/bin/sh\n# Malicious dropper: writes cron.d/.healthcheck and tmp/.cache_export\r\033[K# Harmless PNG metadata comment\necho "staged"\n' \
+      > "$TQ_PG/incident/web/uploads/logo.png"
+  fi
+  ;;
+task) cat <<'EOF'
+Check the magic bytes of `web/uploads/logo.png` with `file`:
+
+      `file web/uploads/logo.png`
+EOF
+;;
+check)
+  tq_ran file && tq_succ && tq_line_has "logo.png" &&
+    { tq_out_hasi "script" || tq_out_hasi "text"; } && return 0
+  return 1 ;;
+hint1) echo 'file web/uploads/logo.png.' ;;
+hint2) echo 'Type `file web/uploads/logo.png`.' ;;
+solution) echo 'file web/uploads/logo.png' ;;
+fact) echo 'It is a shell script pretending to be a PNG -- classic disguised webshell!' ;;
+how) echo "file identified web/uploads/logo.png as a disguised script" ;;
+esac; }
+
+t22_4() { case $1 in
+title) echo "Match the threat-intel IOC hash" ;;
+card) tq_card "INDICATORS OF COMPROMISE (IOCs)" <<'EOF'
+Defenders share SHA-256 fingerprints of known malware in threat feeds
+(`intel/ioc_hashes.txt`). Hash the suspect file to confirm if it is a
+known dropper!
+EOF
+;;
+prep)
+  tq_setup_incident; tq_need_dir "$TQ_PG/incident"
+  if [ ! -f "$TQ_PG/incident/web/uploads/logo.png" ]; then
+    printf '#!/bin/sh\n# Malicious dropper: writes cron.d/.healthcheck and tmp/.cache_export\r\033[K# Harmless PNG metadata comment\necho "staged"\n' \
+      > "$TQ_PG/incident/web/uploads/logo.png"
+  fi
+  ;;
+task)
+  local sha_cmd; sha_cmd=$(tq_os "shasum -a 256" "sha256sum")
+  cat <<EOF
+Compute the SHA-256 fingerprint of \`web/uploads/logo.png\`:
+
+      \`$sha_cmd web/uploads/logo.png\`
+EOF
+  ;;
+check)
+  local want; want=$(tq_sha256_file "$TQ_PG/incident/web/uploads/logo.png")
+  [ -n "$want" ] && tq_succ && tq_out_has "$want" && return 0
+  return 1 ;;
+hint1) tq_os 'Use shasum -a 256 on web/uploads/logo.png.' 'Use sha256sum on web/uploads/logo.png.' ;;
+hint2) tq_os 'Type `shasum -a 256 web/uploads/logo.png`.' 'Type `sha256sum web/uploads/logo.png`.' ;;
+solution) tq_os 'shasum -a 256 web/uploads/logo.png' 'sha256sum web/uploads/logo.png' ;;
+fact) printf '%s\n' \
+  'That exact SHA-256 matches `midnight_webshell_dropper` in' \
+  '`intel/ioc_hashes.txt`!' ;;
+how) echo "SHA-256 of web/uploads/logo.png matched intel/ioc_hashes.txt" ;;
+esac; }
+
+t22_5() { case $1 in
+title) echo "Safe static analysis (cat -v)" ;;
+prep)
+  tq_setup_incident; tq_need_dir "$TQ_PG/incident"
+  if [ ! -f "$TQ_PG/incident/web/uploads/logo.png" ]; then
+    printf '#!/bin/sh\n# Malicious dropper: writes cron.d/.healthcheck and tmp/.cache_export\r\033[K# Harmless PNG metadata comment\necho "staged"\n' \
+      > "$TQ_PG/incident/web/uploads/logo.png"
+  fi
+  ;;
+task) cat <<'EOF'
+Inspect `web/uploads/logo.png` safely using `cat -v` so hidden terminal
+escape bytes cannot hide the dropper's true comment:
+
+      `cat -v web/uploads/logo.png`
+EOF
+;;
+check)
+  tq_ran cat && tq_line_opt v && tq_out_has "Malicious dropper" && return 0
+  return 1 ;;
+hint1) echo 'cat -v web/uploads/logo.png.' ;;
+hint2) echo 'Type `cat -v web/uploads/logo.png`.' ;;
+solution) echo 'cat -v web/uploads/logo.png' ;;
+fact) printf '%s\n' \
+  'Caught the hidden line! It dropped `cron.d/.healthcheck` and staged' \
+  'data in `tmp/.cache_export`.' ;;
+how) echo "cat -v revealed the hidden dropper comment in logo.png" ;;
+esac; }
+
+t22_6() { case $1 in
+title) echo "Decode the staged exfiltration" ;;
+prep) tq_setup_incident; tq_need_dir "$TQ_PG/incident" ;;
+task) cat <<'EOF'
+Find out what the attacker packed into `tmp/.cache_export` by decoding
+its base64:
+
+      `base64 --decode < tmp/.cache_export`
+EOF
+;;
+check)
+  if tq_ran base64 && tq_out_has "FLAG{caught-the-midnight-breach}"; then
+    tq_flag "FLAG{caught-the-midnight-breach}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'base64 --decode < tmp/.cache_export.' ;;
+hint2) echo 'Type `base64 --decode < tmp/.cache_export`.' ;;
+solution) echo 'base64 --decode < tmp/.cache_export' ;;
+fact) printf '%s\n' \
+  'Now you know the blast radius: they staged a database export.' \
+  'Time to contain!' ;;
+how) echo "base64 --decode uncovered FLAG{caught-the-midnight-breach}" ;;
+esac; }
+
+t22_7() { case $1 in
+title) echo "Contain: quarantine the dropper" ;;
+prep)
+  tq_setup_incident; tq_need_dir "$TQ_PG/incident"
+  mkdir -p "$TQ_PG/incident/quarantine"
+  if [ ! -f "$TQ_PG/incident/web/uploads/logo.png" ]; then
+    printf '#!/bin/sh\n# Malicious dropper\n' > "$TQ_PG/incident/web/uploads/logo.png"
+  fi
+  rm -f "$TQ_PG/incident/quarantine/logo.png"
+  ;;
+task) cat <<'EOF'
+Move the malicious upload out of the web folder into `quarantine/` so
+we preserve evidence while stopping anyone from running it:
+
+      `mv web/uploads/logo.png quarantine/`
+EOF
+;;
+check)
+  [ ! -e "$TQ_PG/incident/web/uploads/logo.png" ] && [ -f "$TQ_PG/incident/quarantine/logo.png" ] && return 0
+  return 1 ;;
+hint1) echo 'mv web/uploads/logo.png quarantine/.' ;;
+hint2) echo 'Type `mv web/uploads/logo.png quarantine/`.' ;;
+solution) echo 'mv web/uploads/logo.png quarantine/' ;;
+fact) printf '%s\n' \
+  'Quarantined, not deleted: responders keep malware samples for' \
+  'forensic evidence.' ;;
+how) echo "web/uploads/logo.png moved into quarantine/" ;;
+esac; }
+
+t22_8() { case $1 in
+title) echo "Evict the hidden cron persistence" ;;
+prep)
+  tq_setup_incident; tq_need_dir "$TQ_PG/incident"
+  [ -f "$TQ_PG/incident/cron.d/.healthcheck" ] || echo "*/5 * * * * /srv/web/uploads/logo.png" > "$TQ_PG/incident/cron.d/.healthcheck"
+  ;;
+task) cat <<'EOF'
+Delete the attacker's hidden scheduled-job hook so it cannot re-run
+every 5 minutes:
+
+      `rm cron.d/.healthcheck`
+EOF
+;;
+check)
+  [ ! -e "$TQ_PG/incident/cron.d/.healthcheck" ] && return 0
+  return 1 ;;
+hint1) echo 'rm cron.d/.healthcheck.' ;;
+hint2) echo 'Type `rm cron.d/.healthcheck`.' ;;
+solution) echo 'rm cron.d/.healthcheck' ;;
+fact) printf '%s\n' \
+  'Persistence cut! Always check cron, systemd/launchd, and shell' \
+  'startup files after a breach.' ;;
+how) echo "cron.d/.healthcheck persistence hook removed" ;;
+esac; }
+
+t22_9() { case $1 in
+title) echo "Evict the rogue SSH backdoor" ;;
+prep)
+  tq_setup_incident; tq_need_dir "$TQ_PG/incident"
+  cat > "$TQ_PG/incident/ssh/authorized_keys" <<'EOF'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOpsLegitKey000000000000000000000000 ops@company
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIShadowBackdoor999999999999999999999 shadow@198.51.100.77
+EOF
+  ;;
+task) cat <<'EOF'
+Keep `ops@company` and evict `shadow@198.51.100.77` from
+`ssh/authorized_keys` (use `\` or type on one line):
+
+  `grep -v "shadow@" ssh/authorized_keys > ssh/ak.tmp && \`
+  `  mv ssh/ak.tmp ssh/authorized_keys`
+
+  `grep -v "shadow@"`   keep every line EXCEPT the attacker's key
+  `&& mv ...`           replace `authorized_keys` cleanly
+EOF
+;;
+check)
+  local f="$TQ_PG/incident/ssh/authorized_keys"
+  [ -f "$f" ] && grep -q "ops@company" "$f" && ! grep -q "shadow@" "$f" && return 0
+  return 1 ;;
+hint1) echo 'Use grep -v "shadow@" into a temp file, then mv it back.' ;;
+hint2) cat <<'EOF'
+Type:
+  `grep -v "shadow@" ssh/authorized_keys > ssh/ak.tmp && \`
+  `  mv ssh/ak.tmp ssh/authorized_keys`
+EOF
+;;
+solution) echo 'grep -v "shadow@" ssh/authorized_keys > ssh/ak.tmp && mv ssh/ak.tmp ssh/authorized_keys' ;;
+fact) printf '%s\n' \
+  'Door locked! Legitimate ops access stayed intact while the attacker' \
+  'lost their backdoor.' ;;
+how) echo "rogue shadow@ SSH key evicted while preserving ops@company" ;;
+esac; }
+
+t22_10() { case $1 in
+title) echo "Write the incident post-mortem" ;;
+card) tq_card "CLOSE THE INCIDENT" <<'EOF'
+Every real security team closes an incident with a written post-mortem:
+what happened, who attacked, and confirmation that containment is done.
+EOF
+;;
+prep) tq_setup_incident; tq_need_dir "$TQ_PG/incident" ;;
+task) cat <<'EOF'
+Write your incident summary artifact `incident-report.txt`:
+
+  `printf '%s\n' "INCIDENT: Midnight Breach" \`
+  `  "ATTACKER: 198.51.100.77" "STATUS: CONTAINED" > incident-report.txt`
+EOF
+;;
+check)
+  local f="$TQ_PG/incident/incident-report.txt"
+  if [ -f "$f" ] && grep -q "198.51.100.77" "$f" && grep -q "CONTAINED" "$f"; then
+    tq_flag "FLAG{blue-team-responder}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'printf the three lines into incident-report.txt.' ;;
+hint2) cat <<'EOF'
+Type:
+  `printf '%s\n' "INCIDENT: Midnight Breach" \`
+  `  "ATTACKER: 198.51.100.77" "STATUS: CONTAINED" > incident-report.txt`
+EOF
+;;
+solution) printf '%s\n' "printf '%s\\n' \"INCIDENT: Midnight Breach\" \"ATTACKER: 198.51.100.77\" \"STATUS: CONTAINED\" > incident-report.txt" ;;
+fact) echo 'Incident closed! Your report lives at `incident/incident-report.txt`.' ;;
+how) echo "incident-report.txt created and FLAG{blue-team-responder} captured" ;;
+esac; }
+
+# ===========================================================================
 #  SIDE QUEST S1: Portrait of Your Computer (R22)
 # ===========================================================================
 # Read-only questions about the player's real machine. Every answer goes
@@ -12214,8 +13994,13 @@ tq_agent_done() {
   local id=$1 flg
   flg=$("$id" flag 2>/dev/null)
   [ -n "$flg" ] && tq_flag "$flg"
-  if [ "${TQ_AGENT_CLEAN:-0}" = 1 ]; then tq_cheer
-  else echo; tq_dim "  Lesson learned. On we go."; fi
+  if [ "${TQ_AGENT_CLEAN:-0}" = 1 ]; then
+    tq_cheer
+    tq_after_solve "$id" 1
+  else
+    echo; tq_dim "  Lesson learned. On we go."
+    tq_after_solve "$id" 0
+  fi
   if [ -n "$("$id" fact 2>/dev/null)" ]; then
     echo
     "$id" fact | sed "s/^/  ${C_DIM}*${C_0} /" | tq_fmt_inline
@@ -12235,7 +14020,7 @@ tq_run_agent() {
     if ! tq_read_line; then echo; return 4; fi
     if [ "$TQ_MULTI_PASTE" = 1 ]; then
       echo
-      tq_warn "> That was several lines at once, pasted, so nothing ran."
+      tq_react "$C_WARN" "That was several lines at once, pasted, so nothing ran."
       continue
     fi
     TQ_LINE=${TQ_LINE#"${TQ_LINE%%[! ]*}"}
@@ -12259,6 +14044,7 @@ tq_run_agent() {
       menu|Menu) return 3 ;;
       status|Status) tq_status; continue ;;
       cheat|Cheat|cheatsheet|Cheatsheet) tq_show_cheatsheet; continue ;;
+      trophies|Trophies|rank|Rank|badges|Badges|score|Score) tq_show_trophies; continue ;;
       quit|Quit|exit|logout|q)
         if [ "$first" = q ] && [ -n "$rest" ]; then :; else return 4; fi ;;
       help|Help|HELP|'?')
@@ -12283,7 +14069,7 @@ stops it, \`why\` makes the agent explain it."
     if [ -n "$ans" ]; then
       if [ "$phase" = repair ]; then
         echo
-        tq_warn "> First the repair: the agent waits. (Type hint to see how.)"
+        tq_react "$C_WARN" "First the repair: the agent waits. (Type hint to see how.)"
         continue
       fi
       if tq_agent_decide "$id" "$ans"; then tq_agent_done "$id"; return 0; fi
@@ -12293,7 +14079,7 @@ stops it, \`why\` makes the agent explain it."
     # A normal command: looking around, or the repair.
     if msg=$(tq_pasted "$TQ_LINE"); then
       echo
-      printf '%s\n' "$msg" | fold -s -w 72 | sed -e "1s/^/  ${C_WARN}>${C_0} /" -e "2,\$s/^/    /" | tq_fmt_inline
+      tq_react "" "$msg"
       continue
     fi
     history -s "$TQ_LINE"
@@ -12317,12 +14103,12 @@ $TQ_LINE"
       tq_agent_done "$id"
       return 0
     fi
-    if [ "$TQ_INT" = 1 ]; then tq_warn "> Stopped with Ctrl-C."
-    elif [ "$TQ_ST" = 127 ]; then tq_warn "> The shell does not know that command. Check the spelling."
+    if [ "$TQ_INT" = 1 ]; then tq_react "$C_WARN" "Stopped with Ctrl-C."
+    elif [ "$TQ_ST" = 127 ]; then tq_react "$C_WARN" "The shell does not know that command. Check the spelling."
     elif [ "$phase" = repair ]; then
-      tq_warn "> Not repaired yet. (Type hint to see the repair again.)"
+      tq_react "$C_WARN" "Not repaired yet. (Type hint to see the repair again.)"
     else
-      tq_dim "  (You looked around. The agent still waits: allow, deny or why?)"
+      tq_react "" "You looked around. The agent still waits: allow, deny or why?"
     fi
   done
 }
@@ -12752,11 +14538,352 @@ fact) echo 'Outside the project, and it stays: two red flags in one line.' ;;
 how) echo "agent step: the right call is deny (writes outside the project, stays after the job); the guard blocks it even after allow; FLAG{read-first-then-allow}" ;;
 esac; }
 
+# ===========================================================================
+#  SIDE QUEST S3: Security Checkup of Your Machine (R41)
+# ===========================================================================
+# Read-only security audit of the player's own computer. Every answer is
+# recorded in ~/apprentice-playground/checkup/security-report.txt with the
+# command that checked it, so the player can re-audit anytime.
+
+TQ_CHECKUP_ROWS="priv:tS3_1 mask:tS3_2 path:tS3_3 ports:tS3_4 homeperm:tS3_5 dotfiles:tS3_6 osdef:tS3_7"
+
+tq_checkup_label() { case $1 in
+  priv)     echo "Account & privilege" ;;
+  mask)     echo "Default file umask" ;;
+  path)     echo "PATH hijack check" ;;
+  ports)    echo "Listening TCP ports" ;;
+  homeperm) echo "Home folder permissions" ;;
+  dotfiles) echo "Hidden dotfiles at home" ;;
+  osdef)    tq_os "System code-signing" "Kernel ASLR" ;;
+esac; }
+
+tq_checkup_setup() {
+  local d="$TQ_PG/checkup"
+  [ -L "$d" ] && rm -f "$d"
+  mkdir -p "$d"
+}
+
+tq_checkup_get() { sed -n "s/^$1=//p" "$TQ_PG/checkup/.answers" 2>/dev/null | head -n 1; }
+
+tq_checkup_set() {
+  local d="$TQ_PG/checkup" f v
+  f="$d/.answers"
+  [ -d "$d" ] && [ ! -L "$d" ] || return 0
+  v=$(printf '%s' "$2" | LC_ALL=C tr -d '\n\r' |
+      awk '{ gsub(/  +/, " "); sub(/^ /, ""); sub(/ $/, ""); print substr($0, 1, 50) }')
+  [ -n "$v" ] || return 0
+  { grep -v "^$1=" "$f" 2>/dev/null; printf '%s=%s\n' "$1" "$v"; } > "$f.tmp" && mv -f "$f.tmp" "$f"
+  tq_checkup_draw
+}
+
+tq_checkup_draw() {
+  local d="$TQ_PG/checkup" row k t v
+  {
+    echo "Security checkup of my computer"
+    echo "==============================="
+    echo "Audited read-only on $(date '+%Y-%m-%d') from the terminal."
+    echo "Under each finding is the command that checked it."
+    echo
+    for row in $TQ_CHECKUP_ROWS; do
+      k=${row%%:*}; t=${row#*:}
+      v=$(tq_checkup_get "$k")
+      [ -n "$v" ] || continue
+      printf '%s: %s\n' "$(tq_checkup_label "$k")" "$v"
+      printf '    $ %s\n\n' "$("$t" solution | head -n 1)"
+    done
+  } > "$d/security-report.txt.tmp" 2>/dev/null && mv -f "$d/security-report.txt.tmp" "$d/security-report.txt"
+}
+
+tq_checkup_noted() {
+  local v
+  v=$(tq_checkup_get "$1")
+  if [ -n "$v" ]; then printf 'In your report now: **%s: %s**\n' "$(tq_checkup_label "$1")" "$v"
+  else printf 'In your report now: %s.\n' "$(tq_checkup_label "$1")"; fi
+}
+
+tq_LS3() { case $1 in
+title) echo "Security Checkup of Your Machine" ;;
+after) echo 19 ;;
+tasks) echo "tS3_1 tS3_2 tS3_3 tS3_4 tS3_5 tS3_6 tS3_7 tS3_8" ;;
+setup) tq_checkup_setup; cd "$TQ_PG/checkup" || return ;;
+pitch) cat <<'EOF'
+Seven read-only security checks on **your own** computer: privileges,
+umask, PATH safety, open ports, home permissions, dotfiles, and OS
+defenses. Saved to `security-report.txt`. (Optional, about 5 minutes.)
+EOF
+;;
+intro)
+  tq_banner "SIDE QUEST" "SECURITY CHECKUP OF YOUR MACHINE"
+  tq_pid1 5 shield
+  echo
+  tq_max "You just practiced attacking and defending labs. Now let's run" \
+         "a gentle, 100% read-only security checkup on YOUR real computer" \
+         "and write the results into security-report.txt."
+  ;;
+outro) cat <<EOF
+You audited your own machine's privileges, default permissions, PATH,
+open ports, home directory locks, dotfiles, and OS memory defenses --
+without installing a single security scanner.
+---
+Your personal checkup stays on this computer at:
+\`$TQ_PG_SHOW/checkup/security-report.txt\`
+Run any command in it whenever you want a quick health check.
+EOF
+;;
+explore)
+  tq_os 'Check your firewall in System Settings > Network > Firewall, and FileVault disk encryption under Privacy & Security.' \
+        'Check your Linux firewall status in a normal terminal (for example `ufw status` or `nft list ruleset` if installed).'
+  echo 'Keep your OS and browser updated: patching closes known holes before attackers can automate them.' ;;
+esac; }
+
+tS3_1() { case $1 in
+title) echo "Least privilege: who are you?" ;;
+card) tq_card "READ-ONLY SECURITY AUDIT" <<'EOF'
+Every command in this side quest only **reads**. We record each finding
+in `~/apprentice-playground/checkup/security-report.txt`.
+First check: are you working as a normal user (not `uid=0` root)?
+EOF
+;;
+prep) tq_checkup_setup; tq_need_dir "$TQ_PG/checkup" ;;
+task) cat <<'EOF'
+Print your user ID and group memberships:
+
+      `id`
+
+  `uid=0`   root (dangerous for daily work)
+  other     ordinary user (limits blast radius of mistakes or malware)
+EOF
+;;
+check)
+  if tq_ran id && tq_succ; then
+    local u; u=$(id -u 2>/dev/null)
+    if [ "$u" = 0 ]; then tq_checkup_set priv "uid=0 (root! use a normal user)"
+    else tq_checkup_set priv "non-root user (uid=$u, good)"; fi
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'Just two letters: id.' ;;
+hint2) echo 'Type `id`.' ;;
+solution) echo 'id' ;;
+fact) tq_checkup_noted priv ;;
+how) echo "id checked user privilege and updated security-report.txt" ;;
+esac; }
+
+tS3_2() { case $1 in
+title) echo "Default file locks (umask)" ;;
+card) tq_card "WHAT IS UMASK?" <<'EOF'
+Whenever you create a new file, the shell strips away the permission
+bits listed in `umask`. `0022` blocks others from writing your new
+files; `0077` blocks others from even reading them!
+EOF
+;;
+prep) tq_checkup_setup; tq_need_dir "$TQ_PG/checkup" ;;
+task) cat <<'EOF'
+Check your shell's default permission mask:
+
+      `umask`
+EOF
+;;
+check)
+  if tq_ran umask && tq_succ; then
+    local m; m=$(umask 2>/dev/null)
+    tq_checkup_set mask "$m (blocks group/other write on new files)"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'One word: umask.' ;;
+hint2) echo 'Type `umask`.' ;;
+solution) echo 'umask' ;;
+fact) tq_checkup_noted mask ;;
+how) echo "umask checked default permission mask" ;;
+esac; }
+
+tS3_3() { case $1 in
+title) echo "Audit your PATH for hijack traps" ;;
+prep) tq_checkup_setup; tq_need_dir "$TQ_PG/checkup" ;;
+task) cat <<'EOF'
+Remember Level 11? If `.` (the current folder) is in `$PATH`, a fake
+`ls` inside a downloaded folder could hijack your shell! Check `$PATH`:
+
+      `echo "$PATH"`
+EOF
+;;
+check)
+  if tq_ran echo && tq_line_has 'PATH' && tq_succ; then
+    case ":$TQ_UPATH:" in
+      *":.:"*|*"::"*) tq_checkup_set path "WARNING: current dir (.) in PATH" ;;
+      *) tq_checkup_set path "clean (no '.' entry in PATH)" ;;
+    esac
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'echo "$PATH".' ;;
+hint2) echo 'Type `echo "$PATH"`.' ;;
+solution) echo 'echo "$PATH"' ;;
+fact) tq_checkup_noted path ;;
+how) echo 'echo "$PATH" audited search path for . entries' ;;
+esac; }
+
+tS3_4() { case $1 in
+title) echo "Open network doors on your machine" ;;
+prep) tq_checkup_setup; tq_need_dir "$TQ_PG/checkup" ;;
+task)
+  if [ "$TQ_OS" = mac ]; then cat <<'EOF'
+List every TCP port currently listening on your Mac:
+
+      `netstat -an | grep LISTEN`
+
+Check whether services bind to `127.0.0.1` (local) or `*.PORT` (all).
+EOF
+  else cat <<'EOF'
+List every TCP port currently listening on your Linux machine:
+
+      `ss -tln`
+
+  `-t` TCP, `-l` listening, `-n` numeric ports. Watch for `0.0.0.0`!
+EOF
+  fi ;;
+check)
+  local n=0
+  if [ "$TQ_OS" = mac ]; then
+    tq_ran netstat && tq_ran grep || return 1
+    n=$(netstat -an 2>/dev/null | grep -c LISTEN)
+  else
+    tq_ran ss && tq_succ || return 1
+    n=$(ss -tln 2>/dev/null | awk 'NR>1 {c++} END {print c+0}')
+  fi
+  tq_checkup_set ports "$n listening TCP socket(s)"
+  return 0 ;;
+hint1) tq_os 'netstat -an piped to grep LISTEN.' 'ss -tln.' ;;
+hint2) tq_os 'Type `netstat -an | grep LISTEN`.' 'Type `ss -tln`.' ;;
+solution) tq_os 'netstat -an | grep LISTEN' 'ss -tln' ;;
+fact) tq_checkup_noted ports ;;
+how) echo "listening TCP ports audited and recorded" ;;
+esac; }
+
+tS3_5() { case $1 in
+title) echo "Home folder lock check" ;;
+prep) tq_checkup_setup; tq_need_dir "$TQ_PG/checkup" ;;
+task) cat <<'EOF'
+Check the permissions on your own home folder (`~`):
+
+      `ls -ld ~`
+
+  `-d`   inspect the folder itself, not its contents
+EOF
+;;
+check)
+  if tq_ran ls && tq_line_opt d && tq_succ; then
+    local p; p=$(tq_perm "$HOME")
+    tq_checkup_set homeperm "$p"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'ls -ld ~.' ;;
+hint2) echo 'Type `ls -ld ~`.' ;;
+solution) echo 'ls -ld ~' ;;
+fact) tq_checkup_noted homeperm ;;
+how) echo "ls -ld ~ checked home directory permissions" ;;
+esac; }
+
+tS3_6() { case $1 in
+title) echo "Audit hidden dotfiles at home" ;;
+prep) tq_checkup_setup; tq_need_dir "$TQ_PG/checkup" ;;
+task) cat <<'EOF'
+Shell startup files and SSH configs live as hidden dotfiles in `~`.
+List everything in your home folder, hidden files included:
+
+      `ls -la ~`
+EOF
+;;
+check)
+  if tq_ran ls && tq_line_opt a && tq_succ; then
+    local n; n=$(ls -A "$HOME" 2>/dev/null | awk '/^\./ {c++} END {print c+0}')
+    tq_checkup_set dotfiles "$n hidden entries in ~"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'ls -la ~.' ;;
+hint2) echo 'Type `ls -la ~`.' ;;
+solution) echo 'ls -la ~' ;;
+fact) tq_checkup_noted dotfiles ;;
+how) echo "ls -la ~ audited hidden dotfiles in home folder" ;;
+esac; }
+
+tS3_7() { case $1 in
+title) tq_os "System binary code-signing" "Kernel ASLR memory defense" ;;
+card)
+  if [ "$TQ_OS" = mac ]; then tq_card "SIGNED SYSTEM BINARIES" <<'EOF'
+macOS cryptographically signs core programs like `/bin/ls` so tampering
+with system tools breaks the Apple signature immediately.
+EOF
+  else tq_card "ASLR: RANDOMIZED MEMORY" <<'EOF'
+**ASLR** (Address Space Layout Randomization) scrambles where programs
+sit in RAM on every run, so memory exploits cannot guess fixed targets.
+Value `2` means full protection is active!
+EOF
+  fi ;;
+prep) tq_checkup_setup; tq_need_dir "$TQ_PG/checkup" ;;
+task)
+  if [ "$TQ_OS" = mac ]; then cat <<'EOF'
+Inspect the code-signing metadata of `/bin/ls`:
+
+      `codesign -dvv /bin/ls 2>&1 | head -n 4`
+EOF
+  else cat <<'EOF'
+Read the Linux kernel's live ASLR switch:
+
+      `cat /proc/sys/kernel/randomize_va_space`
+EOF
+  fi ;;
+check)
+  if [ "$TQ_OS" = mac ]; then
+    tq_ran codesign && tq_out_any || return 1
+    tq_checkup_set osdef "Apple code-signing active on /bin/ls"
+  else
+    tq_ran cat && tq_line_has "randomize_va_space" && tq_succ || return 1
+    local v; v=$(cat /proc/sys/kernel/randomize_va_space 2>/dev/null)
+    tq_checkup_set osdef "randomize_va_space=$v (2 = full)"
+  fi
+  return 0 ;;
+hint1) tq_os 'codesign -dvv /bin/ls 2>&1 | head -n 4.' 'cat /proc/sys/kernel/randomize_va_space.' ;;
+hint2) tq_os 'Type `codesign -dvv /bin/ls 2>&1 | head -n 4`.' 'Type `cat /proc/sys/kernel/randomize_va_space`.' ;;
+solution) tq_os 'codesign -dvv /bin/ls 2>&1 | head -n 4' 'cat /proc/sys/kernel/randomize_va_space' ;;
+fact) tq_checkup_noted osdef ;;
+how) echo "OS defense posture verified and recorded" ;;
+esac; }
+
+tS3_8() { case $1 in
+title) echo "Read your security checkup" ;;
+prep)
+  tq_checkup_setup; tq_need_dir "$TQ_PG"
+  [ -f "$TQ_PG/checkup/security-report.txt" ] || tq_checkup_draw ;;
+task) cat <<'EOF'
+Every check is now saved in `checkup/security-report.txt`. Read your
+finished security checkup:
+
+      `cat checkup/security-report.txt`
+EOF
+;;
+check)
+  if tq_ran cat && tq_line_has "security-report.txt" && tq_out_has "Security checkup"; then
+    tq_flag "FLAG{know-your-defenses}"
+    return 0
+  fi
+  return 1 ;;
+hint1) echo 'cat checkup/security-report.txt.' ;;
+hint2) echo 'Type `cat checkup/security-report.txt`.' ;;
+solution) echo 'cat checkup/security-report.txt' ;;
+fact) echo 'Knowing your baseline is step zero of real defense. Keep this report!' ;;
+how) echo "security-report.txt displayed and FLAG{know-your-defenses} captured" ;;
+esac; }
+
 tq_finale() {
   tq_netlab_stop
   tq_weblab_stop
   tq_tlslab_stop
   tq_cheatsheet_update
+  tq_trophies_update
   tq_clear
   echo
   tq_art <<'ART'
@@ -12771,15 +14898,22 @@ tq_finale() {
 ART
   echo
   tq_pid1 5 cheer
-  local s=0 t total=0 l
+  local s=0 t total=0 l flags sides total_sides
   for l in $TQ_LEVELS; do for t in $(tq_level_tasks "$l"); do total=$((total+1)); tq_has "$TQ_SOLVED" "$t" && s=$((s+1)); done; done
+  flags=$(tq_count "$TQ_FLAGS")
+  sides=$(tq_count "$TQ_DONE_SIDE")
+  total_sides=$(tq_count "$TQ_SIDE")
+  tq_write_certificate "$s" "$total" "$flags" "$sides" "$total_sides"
   echo
-  tq_ok "$s of $total tasks solved, $(tq_count "$TQ_FLAGS") flags captured.${TQ_BADGE:+ Badge: $TQ_BADGE}"
-  if [ "$(tq_count "$TQ_DONE_SIDE")" -lt "$(tq_count "$TQ_SIDE")" ]; then
-    tq_dim "Side quests done: $(tq_count "$TQ_DONE_SIDE") of $(tq_count "$TQ_SIDE"). The others wait in the level menu."
+  tq_ok "$s of $total tasks solved, $flags flags captured.${TQ_BADGE:+ Badge: $TQ_BADGE}"
+  tq_ok "Rank: $(tq_rank_name) ($TQ_XP XP) | Trophies: $(tq_count "$TQ_TROPHIES")/$(tq_count "$TQ_ALL_TROPHIES") | Best streak: ${TQ_BEST_STREAK}x"
+  if [ "$sides" -lt "$total_sides" ]; then
+    tq_dim "Side quests done: $sides of $total_sides. The others wait in the level menu."
   else
-    tq_ok "Both side quests done, too."
+    tq_ok "All $total_sides side quests done, too."
   fi
+  echo
+  tq_say "Your signed certificate was saved to \`$TQ_PG_SHOW/CERTIFICATE.txt\`."
   echo
   tq_say "At the start I promised: if you can read the commands, you can follow,
 check and steer an AI. Here is how an agent solved your log mission,
@@ -12807,7 +14941,8 @@ is the point of this whole game."
          "in your own terminal -- and keep your cheatsheet close!"
   echo
   tq_say "**Where next?**
-  - Your personal cheatsheet is ready at \`$TQ_PG_SHOW/CHEATSHEET.md\`.
+  - Your artifacts are saved in \`$TQ_PG_SHOW\`:
+    \`CHEATSHEET.md\`, \`TROPHIES.md\`, and \`CERTIFICATE.txt\`.
   - Use the terminal for real chores: find big files, rename batches,
     search logs with grep, check your own ports and passwords.
     $(tq_os "\`man\` has your back." "\`man\` and \`--help\` have your back.")

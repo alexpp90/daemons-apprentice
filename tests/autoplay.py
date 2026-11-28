@@ -350,11 +350,20 @@ def sc_full(sol):
                  "FLAG CAPTURED: FLAG{quarantine-cleared}",
                  "FLAG CAPTURED: FLAG{walls-within-walls}",
                  "You judged 6 of 6 correctly",
+                 "FLAG CAPTURED: FLAG{magic-bytes-never-lie}",
+                 "FLAG CAPTURED: FLAG{inodes-entropy-and-diffs}",
+                 "FLAG CAPTURED: FLAG{look-37-percent-then-leap}",
+                 "FLAG CAPTURED: FLAG{algorithms-to-live-by}",
+                 "FLAG CAPTURED: FLAG{caught-the-midnight-breach}",
+                 "FLAG CAPTURED: FLAG{blue-team-responder}",
                  "A side quest is open: Portrait of Your Computer",
                  "Side quest S1: 13 of 13 tasks solved", "FLAG CAPTURED: FLAG{know-your-machine}",
                  "A side quest is open: The Supervisor",
                  "Side quest S2: 11 of 11 tasks solved", "Your record: 11 of 11",
-                 "FLAG CAPTURED: FLAG{read-first-then-allow}", "Both side quests done, too."]:
+                 "FLAG CAPTURED: FLAG{read-first-then-allow}",
+                 "A side quest is open: Security Checkup of Your Machine",
+                 "Side quest S3: 8 of 8 tasks solved", "FLAG CAPTURED: FLAG{know-your-defenses}",
+                 "All 3 side quests done, too."]:
         if must not in t:
             res.fail(f"transcript lacks: {must}")
     g.line("q")
@@ -367,9 +376,14 @@ def sc_full(sol):
         res.fail("save file does not list the side quests as done:\n" + save)
     if os.path.exists(os.path.join(home, ".bashrc")) or os.path.exists(os.path.join(home, ".zshrc")):
         res.fail("the agent wrote into the home folder")
-    cheat_path = os.path.join(home, "apprentice-playground", "CHEATSHEET.md")
-    if not os.path.isfile(cheat_path) or os.path.getsize(cheat_path) < 200:
-        res.fail("CHEATSHEET.md missing or too small")
+    for rel, min_sz in [("CHEATSHEET.md", 200), ("TROPHIES.md", 100), ("CERTIFICATE.txt", 100),
+                        (os.path.join("checkup", "security-report.txt"), 50)]:
+        p = os.path.join(home, "apprentice-playground", rel)
+        if not os.path.isfile(p) or os.path.getsize(p) < min_sz:
+            res.fail(f"{rel} missing or too small")
+    sec_rep = os.path.join(home, "apprentice-playground", "checkup", "security-report.txt")
+    if "Account & privilege:" not in open(sec_rep).read():
+        res.fail("security-report.txt lacks Account & privilege")
     n_solved = len(re.search(r"^solved=(.*)$", save, re.M).group(1).split())
     res.note(f"tasks recorded as solved: {n_solved}")
     flags = re.search(r"^flags=(.*)$", save, re.M).group(1).split()
@@ -522,6 +536,7 @@ def sc_wrong_hints_ctrlc(sol):
     step("help", r"Help in this game", "help")
     step("keys", r"German keyboard", "keys")
     step("cheat", r"Your Growing Cheatsheet", "cheatsheet command")
+    step("trophies", r"Trophy Cabinet", "trophies command")
     step("ls /definitely-not-here", r"reported a problem", "error feedback")
     step("ehco hi", r"does not know that command", "command-not-found feedback")
     step("  | completes it. If several names fit", r"text from the game", "pasted game text")

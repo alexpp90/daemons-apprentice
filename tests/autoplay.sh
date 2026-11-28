@@ -387,11 +387,19 @@ sc_full() {
            "FLAG CAPTURED: FLAG{dots-hide-things}" "FLAG CAPTURED: FLAG{defender-certified}" \
            "FLAG CAPTURED: FLAG{quarantine-cleared}" \
            "FLAG CAPTURED: FLAG{walls-within-walls}" "You judged 6 of 6 correctly" \
+           "FLAG CAPTURED: FLAG{magic-bytes-never-lie}" \
+           "FLAG CAPTURED: FLAG{inodes-entropy-and-diffs}" \
+           "FLAG CAPTURED: FLAG{look-37-percent-then-leap}" \
+           "FLAG CAPTURED: FLAG{algorithms-to-live-by}" \
+           "FLAG CAPTURED: FLAG{caught-the-midnight-breach}" \
+           "FLAG CAPTURED: FLAG{blue-team-responder}" \
            "A side quest is open: Portrait of Your Computer" "Side quest S1: 13 of 13 tasks solved" \
            "FLAG CAPTURED: FLAG{know-your-machine}" \
            "A side quest is open: The Supervisor" "Side quest S2: 11 of 11 tasks solved" \
            "Your record: 11 of 11" "FLAG CAPTURED: FLAG{read-first-then-allow}" \
-           "Both side quests done, too."; do
+           "A side quest is open: Security Checkup of Your Machine" \
+           "Side quest S3: 8 of 8 tasks solved" "FLAG CAPTURED: FLAG{know-your-defenses}" \
+           "All 3 side quests done, too."; do
     has_text "$t" || fail "transcript lacks: $t"
   done
   send q; expect "Progress saved" 8
@@ -402,7 +410,10 @@ sc_full() {
   grep -q "^back=" "$save" && fail "save still has a way back from a side quest: $(grep '^back' "$save")"
   [ -e "$HOMEDIR/.bashrc" ] || [ -e "$HOMEDIR/.zshrc" ] && fail "the agent wrote into the home folder"
   grep -q "Awake for: " "$HOMEDIR/apprentice-playground/portrait/my-computer.txt" 2>/dev/null || fail "my-computer.txt has no answers"
+  grep -q "Account & privilege:" "$HOMEDIR/apprentice-playground/checkup/security-report.txt" 2>/dev/null || fail "security-report.txt has no answers"
   [ -s "$HOMEDIR/apprentice-playground/CHEATSHEET.md" ] || fail "CHEATSHEET.md missing or empty"
+  [ -s "$HOMEDIR/apprentice-playground/TROPHIES.md" ] || fail "TROPHIES.md missing or empty"
+  [ -s "$HOMEDIR/apprentice-playground/CERTIFICATE.txt" ] || fail "CERTIFICATE.txt missing or empty"
   note "tasks recorded as solved: $(sed -n 's/^solved=//p' "$save" | wc -w | tr -d ' ')"
   note "flags: $(sed -n 's/^flags=//p' "$save" | wc -w | tr -d ' ')"
   drop_home
@@ -517,6 +528,7 @@ sc_wrong_hints_ctrlc() {
   [ "$M" = "<<TQ:t0_2>>" ] || fail "help solved a task other than the first one ($M)"
   step keys "German keyboard" "keys"
   step cheat "Your Growing Cheatsheet" "cheatsheet command"
+  step trophies "Trophy Cabinet" "trophies command"
   step "ls /definitely-not-here" "reported a problem" "error feedback"
   step "ehco hi" "bash: ehco: command not found" "shell-like error message"
   step "if then" "syntax error" "syntax error message"

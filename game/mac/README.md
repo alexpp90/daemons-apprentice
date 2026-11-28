@@ -27,9 +27,13 @@ Downloads), click **Allow**: Terminal needs it to read the game file.
 - Every task you solve adds its command to your own cheatsheet, the file
   `CHEATSHEET.md` in the folder `apprentice-playground`. Type `cheat` to
   see it.
-- Twice along the way the game offers an optional side quest: a portrait
-  of your own computer, and keeping an eye on an AI agent. Say yes or no;
-  both stay in the level menu.
+- Type `trophies` anytime to see your rank, XP, clean-solve streak, and
+  unlocked trophies (also saved in `TROPHIES.md`, with a signed
+  `CERTIFICATE.txt` at the finish).
+- Three times along the way the game offers an optional side quest: a
+  portrait of your own computer, keeping an eye on an AI agent, and a
+  read-only security checkup of your Mac. Say yes or no; all three stay in
+  the level menu.
 - The game explains every command before you type it. Make that your
   habit everywhere: never run a command you do not understand.
 

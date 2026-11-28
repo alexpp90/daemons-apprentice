@@ -121,20 +121,34 @@ for os in mac linux; do
         $t repair | grep -q -F -- "$($t fixcmd)" || echo "FAIL R5 $t: the repair text does not show its command"
       fi
     done
-    # R22: the portrait only reads: no solution writes, deletes or changes
-    # anything, and on a Mac none walks through the home folder
+    # R22/R41: the portrait (S1) and security checkup (S3) only read: no
+    # solution writes, deletes or changes anything, and on a Mac none walks
+    # through the home folder
     set -f
-    for t in $(tq_LS1 tasks); do
-      sol=$($t solution | sed "s#2>/dev/null##g")
-      case "$sol" in *">"*) echo "FAIL R22 $t writes into a file" ;; esac
-      for w in $sol; do
-        case "$w" in rm|mv|cp|chmod|chown|touch|mkdir|tee|ln|dd|sudo|-delete|-exec) echo "FAIL R22 $t uses $w" ;; esac
+    for s in S1 S3; do
+      for t in $(tq_L$s tasks); do
+        sol=$($t solution | sed -e "s#2>/dev/null##g" -e "s#2>&1##g")
+        case "$sol" in *">"*) echo "FAIL R22/R41 $t writes into a file" ;; esac
+        for w in $sol; do
+          case "$w" in rm|mv|cp|chmod|chown|touch|mkdir|tee|ln|dd|sudo|-delete|-exec) echo "FAIL R22/R41 $t uses $w" ;; esac
+        done
+        if [ "$TQ_OS" = mac ]; then
+          case "$sol" in du*"~"*|find*"~"*) echo "FAIL R22/R41 $t walks through the home folder on a Mac" ;; esac
+        fi
       done
-      if [ "$TQ_OS" = mac ]; then
-        case "$sol" in du*"~"*|find*"~"*) echo "FAIL R22 $t walks through the home folder on a Mac" ;; esac
-      fi
     done
     set +f
+    # R42: gamification trophies and ranks are well-formed
+    for tid in $TQ_ALL_TROPHIES; do
+      [ -n "$(tq_trophy_info "$tid" name)" ] || echo "FAIL R42 trophy $tid has no name"
+      [ -n "$(tq_trophy_info "$tid" desc)" ] || echo "FAIL R42 trophy $tid has no desc"
+      [ -n "$(tq_trophy_info "$tid" clue)" ] || echo "FAIL R42 trophy $tid has no clue"
+    done
+    for xp in 0 150 500 1200 2200 3600 5200 7200; do
+      TQ_XP=$xp
+      [ -n "$(tq_rank_name)" ] || echo "FAIL R42 no rank name for XP=$xp"
+    done
+    TQ_XP=0
     # R13/R14: the example files the player cats fit 80 columns with the
     # "  | " in front of command output
     TQ_PG=$(mktemp -d "${TMPDIR:-/tmp}/tq-pg.XXXXXX"); tq_make_timeline
